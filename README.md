@@ -7,12 +7,36 @@
 [![Target](https://img.shields.io/badge/target-LangChain%20DeepAgents-blue)]()
 [![Python](https://img.shields.io/badge/python-3.11%2B-green)]()
 
-```text
-RevFactory Harness  ──[harness2deepagents]──►  DeepAgents Python App
-  .claude/agents/                                 app/agent.py
-  .claude/skills/                                 app/subagents
-  .mcp.json                                       app/skills/
-  CLAUDE.md                                       app/mcp_tools.py
+```mermaid
+flowchart LR
+    subgraph Source["🟧 RevFactory Harness (Claude Code)"]
+        A1[".claude/agents/*.md"]
+        A2[".claude/skills/*"]
+        A3[".mcp.json"]
+        A4["CLAUDE.md"]
+    end
+
+    H2D{{"⚙️ harness2deepagents"}}
+
+    subgraph Target["🟦 DeepAgents Python App"]
+        B1["app/agent.py<br/>(main + subagents)"]
+        B2["app/skills/"]
+        B3["app/tools.py<br/>app/mcp_tools.py"]
+        B4["conversion_report.md<br/>+ IR + validation.json"]
+    end
+
+    A1 --> H2D
+    A2 --> H2D
+    A3 --> H2D
+    A4 --> H2D
+    H2D --> B1
+    H2D --> B2
+    H2D --> B3
+    H2D --> B4
+
+    style H2D fill:#f5a623,stroke:#333,stroke-width:2px,color:#000
+    style Source fill:#fff4e6,stroke:#f5a623
+    style Target fill:#e6f0ff,stroke:#1f6feb
 ```
 
 ---
@@ -61,12 +85,114 @@ harness2deepagents/
 
 4명의 전문 에이전트가 IR 기반 파이프라인으로 협업합니다.
 
+```mermaid
+flowchart TD
+    User([👤 User<br/>/harness2deepagents])
+    Orch[["🎼 harness2deepagents<br/>오케스트레이터 Skill"]]
+
+    User --> Orch
+
+    Orch --> E1 & E2 & E3 & E4
+
+    subgraph AgentTeam["🤖 Agent Team — Pipeline + Producer-Reviewer"]
+        direction LR
+        E1["🔎 harness-extractor"]
+        E2["🛠 deepagents-emitter"]
+        E3["✅ port-validator"]
+        E4["📝 conversion-reporter"]
+    end
+
+    E1 -. uses .-> S1[("📚 harness-source-extraction")]
+    E2 -. uses .-> S2[("📚 deepagents-emission")]
+    E3 -. uses .-> S3[("📚 port-validation")]
+    E4 -. uses .-> S4[("📚 conversion-reporting")]
+
+    E1 ==> IR[/"📄 harness.deepagents.ir.yaml"/]
+    IR ==> E2
+    E2 ==> APP[/"📦 app/ + skills/"/]
+    APP ==> E3
+    E3 ==> VAL[/"🧪 logs/validation.json"/]
+    IR --> E4
+    APP --> E4
+    VAL --> E4
+    E4 ==> REP[/"📝 conversion_report.md"/]
+
+    E3 -. "fix request (1회)" .-> E2
+
+    style User fill:#fffae6,stroke:#d4a017
+    style Orch fill:#f5a623,stroke:#333,color:#000
+    style AgentTeam fill:#f0f7ff,stroke:#1f6feb
+    style IR fill:#e6f7ff,stroke:#1f6feb
+    style APP fill:#e6ffea,stroke:#2da44e
+    style VAL fill:#fff0f0,stroke:#cf222e
+    style REP fill:#f3e6ff,stroke:#8250df
+```
+
 | # | 에이전트 | 역할 | 주 스킬 | 산출물 |
 |---|---|---|---|---|
 | 1 | **harness-extractor** | `.claude/*` 파싱, 오케스트레이터·아키텍처 패턴·Claude-only 연산·MCP 감지 | `harness-source-extraction` | `_workspace/01_extractor_ir.yaml` |
 | 2 | **deepagents-emitter** | IR → `create_deep_agent` 기반 Python 앱 코드 생성, 스킬 복사, MCP 마스킹 | `deepagents-emission` | `output_dir/app/*` |
 | 3 | **port-validator** | 7단계 검증 (import / compile / secret leak / skill copy / raw-langgraph 금지 / smoke) | `port-validation` | `output_dir/logs/validation.json` |
 | 4 | **conversion-reporter** | IR + validation 통합, 13개 섹션 보고서, 0.0~1.0 품질 점수 산출 | `conversion-reporting` | `output_dir/conversion_report.md` |
+
+---
+
+## 워크플로우 (Sequence)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as 👤 User
+    participant O as 🎼 Orchestrator<br/>(harness2deepagents)
+    participant X as 🔎 harness-extractor
+    participant M as 🛠 deepagents-emitter
+    participant V as ✅ port-validator
+    participant R as 📝 conversion-reporter
+
+    U->>O: /harness2deepagents [audit only?]
+    O->>O: Phase 1 — mode 결정<br/>(full | audit_only)
+    O->>O: Phase 2 — TeamCreate + TaskCreate
+
+    rect rgba(120,180,255,0.15)
+        Note over X: Phase 3 — Extract
+        O->>X: extract(root, mode)
+        X->>X: glob .claude/agents/*.md<br/>.claude/skills/*/SKILL.md<br/>.mcp.json / CLAUDE.md
+        X->>X: 오케스트레이터 점수화 +<br/>아키텍처 패턴 추정 +<br/>Claude-only 연산 감지
+        X-->>O: _workspace/01_extractor_ir.yaml
+    end
+
+    alt mode == audit_only
+        O->>R: report(IR only)
+        R-->>U: 📝 conversion_report.md (audit)
+    else mode == full
+        rect rgba(180,255,180,0.15)
+            Note over M: Phase 4 — Emit
+            O->>M: emit(IR)
+            M->>M: MAIN_SYSTEM_PROMPT 합성
+            M->>M: SUBAGENTS 레지스트리 생성
+            M->>M: skills/ 복사 +<br/>.mcp.json secret 마스킹
+            M-->>O: ports/deepagents/app/*
+        end
+
+        rect rgba(255,210,150,0.15)
+            Note over V: Phase 5 — Validate (7 steps)
+            O->>V: validate(output_dir)
+            V->>V: import / compile /<br/>secret scan / skill copy /<br/>raw-langgraph 금지 / smoke
+            alt validation fails
+                V-->>M: fix request (1회)
+                M-->>V: re-emit
+            end
+            V-->>O: logs/validation.json
+        end
+
+        rect rgba(220,180,255,0.15)
+            Note over R: Phase 6 — Report
+            O->>R: report(IR + emit + validation)
+            R->>R: 13개 섹션 작성 +<br/>품질 점수 (0.0~1.0)
+            R-->>U: 📝 conversion_report.md
+        end
+    end
+```
 
 ---
 
@@ -77,6 +203,78 @@ harness2deepagents/
 3. **구조 보존** — `Who(agent) / How(skill) / When(orchestration) / What(artifact)`의 4분리를 유지합니다.
 4. **프롬프트 평탄화 금지** — 여러 agent와 skill을 거대 system prompt 하나로 합치지 않습니다.
 5. **안전한 변환** — 기존 `ports/deepagents/` 보존(timestamp 폴백), secret 마스킹, 원본 `.claude/` 불변.
+
+---
+
+## 변환 매핑 (Harness → DeepAgents)
+
+```mermaid
+flowchart LR
+    subgraph H["🟧 RevFactory Harness"]
+        H1["오케스트레이터 스킬"]
+        H2[".claude/agents/*.md"]
+        H3[".claude/skills/*"]
+        H4["_workspace/"]
+        H5["TeamCreate / SendMessage<br/>TaskCreate / run_in_background"]
+        H6[".mcp.json"]
+        H7["CLAUDE.md"]
+    end
+
+    subgraph D["🟦 DeepAgents App"]
+        D1["MAIN_SYSTEM_PROMPT<br/>(agent.py)"]
+        D2["SUBAGENTS registry<br/>(agent.py)"]
+        D3["app/skills/<br/>(SKILL.md + refs/scripts/assets)"]
+        D4["filesystem &<br/>artifact conventions"]
+        D5["main-agent-mediated<br/>handoff (lossy)"]
+        D6["app/.mcp.json (masked)<br/>+ app/mcp_tools.py adapter"]
+        D7["README 컨텍스트 +<br/>safety policy block"]
+    end
+
+    H1 ==>|"lossless"| D1
+    H2 ==>|"lossless"| D2
+    H3 ==>|"copy"| D3
+    H4 -.->|"convention"| D4
+    H5 -.->|"⚠️ lossy"| D5
+    H6 ==>|"masked copy"| D6
+    H7 -.-> D7
+
+    style H fill:#fff4e6,stroke:#f5a623
+    style D fill:#e6f0ff,stroke:#1f6feb
+    style H5 fill:#ffeaea,stroke:#cf222e,color:#000
+    style D5 fill:#ffeaea,stroke:#cf222e,color:#000
+```
+
+> `==>`(굵은 화살표) = lossless 변환 · `-.->`(점선) = convention/lossy 매핑
+
+---
+
+## 모드별 실행 흐름
+
+```mermaid
+stateDiagram-v2
+    [*] --> ParseInput
+
+    ParseInput --> AuditOnly: "audit only"<br/>"분석만"<br/>"점검만"<br/>signal 감지
+    ParseInput --> Full: 그 외 default
+
+    state Full {
+        [*] --> Extract_F
+        Extract_F --> Emit
+        Emit --> Validate
+        Validate --> Emit: ⚠️ fix request (1회)
+        Validate --> Report_F: pass / warnings
+        Report_F --> [*]
+    }
+
+    state AuditOnly {
+        [*] --> Extract_A
+        Extract_A --> Report_A: IR only<br/>(emit/validate skip)
+        Report_A --> [*]
+    }
+
+    Full --> [*]: 📦 app + IR + report
+    AuditOnly --> [*]: 📝 audit report
+```
 
 ---
 
@@ -157,6 +355,17 @@ ports/deepagents/                     # 이미 존재 시 ports/deepagents_YYYYM
 
 `conversion-reporter`가 가중평균으로 산출합니다.
 
+```mermaid
+pie showData title 변환 품질 점수 가중치 (총 1.00)
+    "agents parsed" : 20
+    "skills parsed/copied" : 20
+    "orchestrator detected" : 15
+    "validation pass" : 15
+    "pattern detected" : 10
+    "Claude operations mapped" : 10
+    "tools/MCP handled" : 10
+```
+
 | 항목 | 가중치 |
 |---|---:|
 | agents parsed | 0.20 |
@@ -209,6 +418,31 @@ ports/deepagents/                     # 이미 존재 시 ports/deepagents_YYYYM
 - **덮어쓰기 방지** — 기존 `ports/deepagents/`가 있으면 timestamp 폴더로 자동 폴백
 - **Path traversal 차단** — output path가 project root 밖이면 에러
 - **Live invocation 금지** — `port-validator`는 import/compile/smoke 정적 검증만 수행, 실제 모델 호출 안 함
+
+### Port Validator — 7단계 검증 파이프라인
+
+```mermaid
+flowchart LR
+    Start([📦 emit 완료]) --> S1
+    S1["1️⃣ import test<br/>(deepagents)"] --> S2
+    S2["2️⃣ python compile<br/>(compileall app)"] --> S3
+    S3["3️⃣ secret leak scan<br/>(regex + entropy)"] --> S4
+    S4["4️⃣ skill copy 완전성<br/>(SKILL.md + refs/scripts/assets)"] --> S5
+    S5["5️⃣ raw-langgraph<br/>금지 패턴 검사"] --> S6
+    S6["6️⃣ smoke test<br/>(no model call)"] --> S7
+    S7["7️⃣ IR ↔ output<br/>일관성 체크"] --> Decide{종합 판정}
+
+    Decide -->|pass| OK([✅ logs/validation.json<br/>status: pass])
+    Decide -->|warnings| WARN([⚠️ pass_with_warnings])
+    Decide -->|fail| FIX[🔁 emitter에 fix 요청<br/>(1회)]
+    FIX --> S1
+
+    style Start fill:#fffae6,stroke:#d4a017
+    style OK fill:#e6ffea,stroke:#2da44e
+    style WARN fill:#fff4d6,stroke:#bf8700
+    style FIX fill:#ffeaea,stroke:#cf222e
+    style Decide fill:#f0f7ff,stroke:#1f6feb
+```
 
 ---
 

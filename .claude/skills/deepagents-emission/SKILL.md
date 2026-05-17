@@ -1,0 +1,205 @@
+---
+name: deepagents-emission
+description: "harness.deepagents.ir.yaml을 입력으로 받아 실행 가능한 DeepAgents Python 앱(agent.py, config.py, tools.py, mcp_tools.py, smoke_test.py, requirements.txt, pyproject.toml, README.md, app/skills/*)을 생성하는 코드 방출 스킬. create_deep_agent 기반 main agent + subagents 구조. raw LangGraph 절대 생성 금지. deepagents-emitter 에이전트가 사용."
+---
+
+# DeepAgents Emission
+
+IR을 입력으로 DeepAgents 앱 코드를 생성하는 작업 스킬. 코드 생성은 `scripts/emit_deepagents.py` + `assets/*.j2` Jinja2 템플릿으로 결정적 처리한다.
+
+## 핵심 원칙
+
+1. **DeepAgents only** — `from deepagents import create_deep_agent`만 사용. `langgraph.graph`, 단일 `create_agent` import 금지.
+2. **IR이 single source of truth** — IR에 없는 정보는 생성하지 않는다. IR 보강이 필요하면 extractor에게 요청.
+3. **프롬프트 평탄화 금지** — agents → SUBAGENTS 배열로 분리. main prompt에 모든 agent body를 합치지 않는다.
+4. **모델 env var는 한 곳** — `config.py`에만 `os.getenv("DEEPAGENTS_MODEL", "anthropic:claude-sonnet-4-6")`. agent.py에 모델명 하드코딩 금지.
+5. **기존 output 보존** — `ports/deepagents/`가 있으면 `ports/deepagents_YYYYMMDD_HHMMSS/`로 폴백.
+
+## 방출 9단계
+
+### 1. Output 디렉토리 결정
+
+```bash
+python scripts/emit_deepagents.py resolve-output --root <root>
+# stdout: ports/deepagents/  또는  ports/deepagents_YYYYMMDD_HHMMSS/
+```
+
+**Path traversal 차단** — 출력 경로가 `<root>` 하위인지 검증.
+
+### 2. IR 로드 + 검증
+
+```bash
+python scripts/emit_deepagents.py load-ir --path _workspace/01_extractor_ir.yaml
+```
+
+필수 필드 누락 시 emit 중단 + extractor에 IR 보강 요청.
+
+### 3. Main system prompt 합성
+
+PRD §13.7 블록 구조로 합성:
+
+```text
+# Converted Harness Orchestrator
+<원본 orchestrator prompt 또는 synthetic prompt>
+
+# Conversion Notes
+- This app was converted from RevFactory Harness output.
+- Use DeepAgents subagents instead of Claude Code Agent Teams.
+- Treat TeamCreate as the available subagent registry.
+- Treat TaskCreate as planning and delegation.
+- Treat SendMessage as result handoff mediated by the main agent.
+
+# Delegation Policy
+<IR workflow.delegation_policy>
+
+# Artifact Policy
+<IR artifacts.workspace_dir + artifact_conventions>
+
+# Safety and Validation Policy
+<tool warnings, MCP warnings, TODO stubs>
+```
+
+오케스트레이터 미발견 시: agents/skills를 기반으로 synthetic prompt 합성. 패턴별 prompt 전략은 PRD §16.3 표 참조.
+
+### 4. Subagent 합성
+
+각 IR `agents[]` 항목을 dict로:
+
+```python
+{
+    "name": "<agent_name>",
+    "description": "<routing description from IR.description>",
+    "system_prompt": r'''<원본 agent body + DeepAgents Runtime Notes 부록>''',
+    "skills": ["/skills/<skill_name>/", ...],  # IR.deepagents.skills
+}
+```
+
+DeepAgents Runtime Notes 부록 (각 subagent prompt 끝에 추가):
+```text
+# DeepAgents Runtime Notes
+You are running as a DeepAgents subagent.
+Return concise, structured results to the main agent.
+Write large intermediate outputs to the filesystem when appropriate.
+Do not assume direct peer-to-peer SendMessage; communicate through task results.
+```
+
+### 5. 코드 템플릿 렌더링
+
+Jinja2 렌더링:
+
+| 템플릿 | 출력 | 입력 |
+|---|---|---|
+| `assets/agent.py.j2` | `app/agent.py` | main_prompt, subagents, tools_imports, skills_path |
+| `assets/config.py.j2` | `app/config.py` | model_env_var, model_default, app_name_default |
+| `assets/tools.py.j2` | `app/tools.py` | tool_stubs[] |
+| `assets/mcp_tools.py.j2` | `app/mcp_tools.py` | (MCP 감지 시만) |
+| `assets/smoke_test.py.j2` | `app/smoke_test.py` | — |
+| `assets/requirements.txt.j2` | `app/requirements.txt` | extra_deps |
+| `assets/pyproject.toml.j2` | `app/pyproject.toml` | project_name, source, target |
+| `assets/README.md.j2` | `app/README.md` | source_summary, env_vars, run_commands, mcp_actions |
+
+```bash
+python scripts/emit_deepagents.py render --ir _workspace/01_extractor_ir.yaml --out <output_dir>/app
+```
+
+### 6. Skills 디렉토리 복사
+
+`.claude/skills/*/`를 `<output_dir>/app/skills/*/`로 복사:
+
+- `SKILL.md`, `references/`, `scripts/`, `assets/` 보존
+- `.git`, `.venv`, `__pycache__`, `.DS_Store` 제외
+- 원본 파일 절대 수정 금지
+- 이름 충돌 시 `{name}__{idx}`로 deterministic rename + warning
+
+```bash
+python scripts/emit_deepagents.py copy-skills --ir _workspace/01_extractor_ir.yaml --out <output_dir>/app/skills
+```
+
+### 7. MCP 처리
+
+`.mcp.json` 발견 시:
+- secret-like literal 마스킹 (`sk-...` → `***REDACTED***`) 후 `<output_dir>/app/.mcp.json`으로 복사
+- env var 참조는 그대로 유지
+- `mcp_tools.py`에 adapter TODO 생성 (load_mcp_tools 함수 stub)
+- README에 MCP 후속 작업 안내 추가
+
+### 8. Tool stub 생성
+
+IR `tools.stubs_required[]`의 각 항목을 `tools.py`에 함수 stub로:
+
+```python
+def web_search_stub(query: str) -> str:
+    """TODO: Implement web search.
+
+    Source: <agent_or_skill_name from IR>
+    Inferred purpose: <reason from IR>
+    Expected I/O: <signature hint>
+    Safety: do not call external APIs until credentials and policy are configured.
+    """
+    raise NotImplementedError("web_search_stub is not implemented yet.")
+```
+
+위험한 도구(shell exec, raw API)는 기본 disabled (`TOOLS = []`에 포함하지 않음).
+
+### 9. IR 최종본 이동
+
+`_workspace/01_extractor_ir.yaml` → `<output_dir>/harness.deepagents.ir.yaml`로 복사 (원본도 보존).
+
+## 코드 템플릿 핵심 규칙
+
+### `agent.py` 필수 요소
+
+- 헤더 docstring: "DeepAgents app generated by harness2deepagents"
+- `from deepagents import create_deep_agent`
+- `from config import SETTINGS`
+- `from tools import TOOLS`
+- `MAIN_SYSTEM_PROMPT = r'''...'''` (raw string으로 prompt 보존)
+- `SUBAGENTS = [...]` (사람이 수정하기 쉬운 list of dict)
+- `agent = create_deep_agent(...)` 단일 호출
+- `def invoke(user_message): ...`
+- `if __name__ == "__main__": ...`
+
+### `config.py` 필수 요소
+
+- `@dataclass(frozen=True) class Settings`
+- `app_name`, `model`, `enable_mcp`, `dry_run` env var 처리
+- `SETTINGS = Settings()` 인스턴스
+
+### `requirements.txt` 최소
+
+```
+deepagents
+langchain
+langchain-anthropic
+python-dotenv
+pyyaml
+```
+
+## 작업 원칙
+
+- **원본 prompt 보존** — agent body는 raw string(`r'''...'''`)으로 그대로 삽입. 임의 요약 금지.
+- **사람이 수정 가능한 코드** — SUBAGENTS는 list literal로 표현. 동적 생성 금지.
+- **TODO는 명확히** — 위치, 이유, 출처를 docstring에 모두 표시.
+- **너무 큰 prompt(>50KB)** — warning만 기록하고 보존 우선. v0.3+에서 prompts/ 분리 고려.
+
+## 안전 규칙
+
+- 원본 `.claude/` 절대 수정 금지
+- 출력 경로는 project root 아래로 제한
+- secret literal은 절대 코드/IR에 하드코딩 금지
+- raw LangGraph emitter 생성 금지 — 검증 단계에서 차단
+- MCP 서버 자동 실행 금지
+
+## 검증 후 재방출 (validator와의 협업)
+
+validator가 fail 보고 시:
+1. 받은 fix 지시(파일:라인, 위반 내용)를 IR과 대조
+2. 해당 파일만 재렌더링 (전체 재방출 아님)
+3. 1회까지만 재시도. 두 번째 실패는 오케스트레이터에게 에스컬레이트.
+
+## 참고
+
+- 코드 템플릿 상세: `references/codegen-templates.md`
+- prompt 합성 규칙 (패턴별): `references/prompt-synthesis.md`
+- MCP 처리 규칙: `references/mcp-handling.md`
+- Skill 매핑 규칙: `references/skill-assignment.md`

@@ -1,0 +1,811 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>harness2deepagents — Claude Code Harness → DeepAgents 자동 포팅</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<script src="deck-stage.js"></script>
+<style>
+  :root {
+    --ink:       #14202b;
+    --ink-2:     #34465a;
+    --ink-3:     #6b7c8f;
+    --line:      #d8dee6;
+    --line-2:    #e9edf2;
+    --paper:     #f5f7fa;
+    --card:      #ffffff;
+    --accent:    #2f6dbf;
+    --accent-2:  #eaf2fb;
+    --accent-3:  #d8e5f4;
+    --dark:      #1a2734;
+    --warm:      #c46a18;
+    --warm-bg:   #fdf3e6;
+  }
+  html, body {
+    margin: 0; background: #0c1218;
+    font-family: 'Noto Sans KR', system-ui, sans-serif;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+  deck-stage > section {
+    background: var(--paper);
+    color: var(--ink);
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+
+  .frame {
+    position: relative; width: 100%; height: 100%;
+    padding: 28px 56px 18px;
+    box-sizing: border-box;
+    display: flex; flex-direction: column;
+    gap: 18px;
+  }
+  .frame::before {
+    content: ""; position: absolute;
+    left: 56px; top: 18px; width: 44px; height: 3px;
+    background: var(--accent);
+  }
+
+  .brand-logos {
+    position: absolute;
+    top: 14px;
+    right: 56px;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    z-index: 5;
+  }
+  .brand-logos img { height: 24px; width: auto; display: block; }
+  .brand-logos .divider { width: 1px; height: 16px; background: var(--line); }
+
+  .hd {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    gap: 32px; padding-bottom: 10px;
+    border-bottom: 1px solid var(--line);
+  }
+  .hd .left { flex: 1; min-width: 0; }
+  .hd .left .eyebrow {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 16px; font-weight: 500;
+    color: var(--accent); letter-spacing: 0.1em;
+    text-transform: uppercase; margin-bottom: 6px;
+  }
+  .hd h1 {
+    margin: 0; font-size: 32px; font-weight: 700;
+    letter-spacing: -0.01em; line-height: 1.2;
+    color: var(--ink);
+  }
+  .hd h1 b { color: var(--accent); font-weight: 700; }
+  .hd .meta {
+    flex-shrink: 0;
+    font-family: 'JetBrains Mono', monospace;
+    display: flex; gap: 24px; align-items: flex-end;
+  }
+  .hd .meta .item .lbl {
+    display: block;
+    font-size: 11px; color: var(--accent); letter-spacing: 0.1em;
+    text-transform: uppercase; margin-bottom: 2px; font-weight: 500;
+  }
+  .hd .meta .item b { font-size: 17px; color: var(--ink); font-weight: 600; }
+
+  .sec-h {
+    display: flex; align-items: baseline; gap: 10px;
+    margin-bottom: 8px;
+  }
+  .sec-h .n {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 16px; font-weight: 500;
+    color: var(--accent); letter-spacing: 0.06em;
+  }
+  .sec-h .t {
+    font-size: 22px; font-weight: 700;
+    color: var(--ink); letter-spacing: -0.005em;
+  }
+  .sec-h .tail { flex: 1; height: 1px; background: var(--line-2); }
+
+  /* ============ SLIDE 1 — WHY ============ */
+  .why-top {
+    display: grid;
+    grid-template-columns: 1fr 1.05fr;
+    gap: 24px;
+    align-items: stretch;
+  }
+  .why-top > div { min-width: 0; display: flex; flex-direction: column; }
+
+  /* 01 overview - AssiWorks 6대 구성 */
+  .overview-card {
+    background: var(--card); border: 1px solid var(--line);
+    padding: 14px 18px;
+    display: flex; flex-direction: column; gap: 10px;
+    flex: 1;
+  }
+  .ov-top {
+    background: var(--accent); color: #fff;
+    padding: 10px 14px;
+    font-size: 18px; font-weight: 700;
+    text-align: center; letter-spacing: 0.02em;
+  }
+  .ov-list {
+    list-style: none; margin: 0; padding: 0;
+    display: flex; flex-direction: column;
+  }
+  .ov-list li {
+    display: flex; align-items: center; gap: 12px;
+    padding: 5px 4px;
+    border-bottom: 1px dashed var(--line-2);
+    font-size: 15px; line-height: 1.35;
+  }
+  .ov-list li:last-child { border-bottom: none; }
+  .ov-list li::before {
+    content: ""; flex-shrink: 0;
+    width: 8px; height: 8px; background: var(--accent);
+  }
+  .ov-list .lbl { font-weight: 700; color: var(--ink); }
+  .ov-list .dsc {
+    color: var(--ink-3); font-size: 14px;
+    margin-left: auto; text-align: right;
+    letter-spacing: 0.01em;
+  }
+  .ov-bottom {
+    background: var(--accent-2); color: var(--ink);
+    border: 1px solid var(--accent-3);
+    padding: 12px 14px; font-size: 17px; font-weight: 700;
+    text-align: center; letter-spacing: 0.02em;
+    margin-top: auto;
+  }
+  .ov-bottom em { color: var(--accent); font-style: normal; }
+
+  /* 02 problem/answer list */
+  .pub-list {
+    list-style: none; margin: 0; padding: 0;
+    display: flex; flex-direction: column;
+    font-size: 15px; color: var(--ink); line-height: 1.4;
+    gap: 7px;
+  }
+  .pub-list li {
+    background: var(--card); border: 1px solid var(--line);
+    border-left: 4px solid var(--accent);
+    padding: 6px 14px;
+    display: flex; align-items: center;
+  }
+  .pub-list li.is-problem { border-left-color: var(--ink-3); }
+  .pub-list li.is-answer { border-left-width: 5px; background: var(--accent-2); }
+  .pub-list li.is-answer b { color: var(--accent); font-weight: 700; }
+  .pub-list li b { color: var(--accent); font-weight: 700; }
+  .pub-list li .tag {
+    display: inline-block; background: var(--line-2);
+    color: var(--ink-3); font-family: 'JetBrains Mono', monospace;
+    font-size: 13px; padding: 3px 9px; margin-right: 12px;
+    font-weight: 500; letter-spacing: 0.04em;
+    flex-shrink: 0;
+  }
+  .pub-list li.is-problem .tag { background: #eef2f7; color: var(--ink-3); }
+  .pub-list li.is-answer .tag { background: var(--accent); color: #fff; }
+  .pub-list li .bd { flex: 1; min-width: 0; }
+
+  /* 03 — full-width punch + factory grid + VIP */
+  .promise-block {
+    background: var(--card); border: 1px solid var(--accent-3);
+    padding: 10px 16px;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .promise-block .qk {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; color: var(--accent);
+    letter-spacing: 0.06em; font-weight: 500;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .promise-block .lead {
+    font-size: 14px; color: var(--ink); line-height: 1.55;
+  }
+  .promise-block .lead b {
+    background: var(--accent-2); padding: 0 4px; font-weight: 700;
+  }
+  .punch-banner {
+    background: var(--dark); color: #fff;
+    padding: 10px 20px;
+    font-size: 19px; font-weight: 700;
+    text-align: center;
+    letter-spacing: -0.005em;
+  }
+  .punch-banner em { color: #6fb0ff; font-style: normal; }
+
+  .factory-grid {
+    display: grid; grid-template-columns: 1fr 1.2fr;
+    gap: 12px;
+  }
+  .factory-side {
+    padding: 8px 12px;
+    border: 1px solid var(--line);
+    background: #fbfcfd;
+    display: flex; flex-direction: column; gap: 5px;
+  }
+  .factory-side.dark { background: var(--accent-2); border-color: var(--accent-3); }
+  .factory-side h4 {
+    margin: 0; font-size: 12px; font-weight: 700;
+    color: var(--accent); letter-spacing: 0.05em;
+    font-family: 'JetBrains Mono', monospace;
+    text-transform: uppercase;
+  }
+  .factory-side.dark h4 { color: var(--accent); }
+  .factory-side .lead {
+    font-size: 15px; font-weight: 700; color: var(--ink);
+    line-height: 1.3;
+  }
+  .factory-side .lead em { color: var(--accent); font-style: normal; }
+  .shift-row {
+    display: flex; align-items: center; gap: 10px;
+    background: #fff;
+    border: 1px dashed var(--accent-3);
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+  .shift-row .from { color: var(--ink-3); text-decoration: line-through; }
+  .shift-row .arrow { color: var(--accent); font-weight: 700; }
+  .shift-row .to { color: var(--accent); font-weight: 700; }
+  .factory-side ul {
+    list-style: none; margin: 0; padding: 0;
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 4px 12px;
+  }
+  .factory-side li {
+    font-size: 13px; color: var(--ink-2); line-height: 1.35;
+    display: flex; align-items: baseline; gap: 7px;
+  }
+  .factory-side li::before {
+    content: ""; width: 5px; height: 5px;
+    background: var(--accent); flex-shrink: 0;
+    transform: translateY(-2px);
+  }
+  .factory-side li b { color: var(--ink); font-weight: 700; }
+  .factory-mini-note {
+    font-size: 11.5px; color: var(--ink-3); line-height: 1.4;
+  }
+  .vip-note {
+    font-size: 13px; color: var(--ink-2);
+    padding: 8px 14px;
+    background: var(--accent-2);
+    border: 1px solid var(--accent-3);
+    line-height: 1.45;
+  }
+  .vip-note b { color: var(--accent); font-weight: 700; }
+
+  /* 03 metrics section */
+  .metrics-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; color: var(--accent);
+    letter-spacing: 0.06em; font-weight: 500;
+    text-transform: uppercase;
+    margin-top: 4px;
+  }
+  .metrics-title em { color: var(--ink); font-style: normal; font-weight: 700; font-family: 'Noto Sans KR', sans-serif; font-size: 14px; letter-spacing: 0; text-transform: none; }
+  .metrics-grid {
+    display: grid; grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+  }
+  .start-steps {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .start-step {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    padding: 5px 10px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .start-step .phase {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; color: var(--accent); font-weight: 700;
+    letter-spacing: 0.04em;
+    background: var(--accent-2);
+    padding: 2px 6px;
+    flex-shrink: 0;
+  }
+  .start-step .body {
+    font-size: 12px; color: var(--ink-2);
+    line-height: 1.3;
+  }
+  .start-step .body b { color: var(--ink); font-weight: 700; }
+  .metric {
+    background: var(--card);
+    border: 1px solid var(--accent-3);
+    padding: 7px 10px;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .m-label {
+    font-size: 13px; font-weight: 700; color: var(--accent);
+    line-height: 1.2;
+  }
+  .m-detail {
+    font-size: 11.5px; color: var(--ink-2); line-height: 1.35;
+  }
+
+  /* ============ SLIDE 2 — HOW ============ */
+  /* 03 5-step flow */
+  .review-flow {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 24px;
+    position: relative;
+  }
+  .rstep {
+    background: var(--accent-2); border: 1px solid var(--accent-3);
+    padding: 12px 14px;
+    display: flex; flex-direction: column; gap: 4px;
+    position: relative;
+  }
+  .rstep:not(:last-child)::after {
+    content: "›"; position: absolute;
+    right: -18px; top: 50%; transform: translateY(-50%);
+    color: var(--accent); font-size: 22px;
+    width: 12px; text-align: center;
+    line-height: 1;
+    font-weight: 700;
+  }
+  .rstep .k {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px; color: var(--accent);
+    letter-spacing: 0.06em; font-weight: 500;
+  }
+  .rstep .t {
+    font-size: 16px; font-weight: 700; color: var(--ink);
+    line-height: 1.2;
+  }
+  .rstep .d {
+    font-size: 13px; color: var(--ink-3); line-height: 1.4;
+  }
+  .rstep .step-points {
+    list-style: none; margin: 3px 0 0; padding: 0;
+    display: flex; flex-direction: column; gap: 3px;
+    font-size: 12px; color: var(--ink-3); line-height: 1.4;
+  }
+  .rstep .step-points li {
+    display: flex; align-items: baseline; gap: 7px;
+  }
+  .rstep .step-points li::before {
+    content: ""; width: 4px; height: 4px;
+    background: var(--accent); flex-shrink: 0;
+    transform: translateY(-2px);
+  }
+  .rstep.final { background: var(--accent); border-color: var(--accent); }
+  .rstep.final .k { color: #cfdcec; }
+  .rstep.final .t { color: #fff; }
+  .rstep.final .step-points { color: #cfdcec; }
+  .rstep.final .step-points li::before { background: #fff; }
+
+  table.review-tbl {
+    width: 100%; border-collapse: collapse;
+    background: var(--card); border: 1px solid var(--line);
+    font-size: 14.5px;
+  }
+  table.review-tbl th, table.review-tbl td {
+    padding: 5px 14px; text-align: left; vertical-align: middle;
+    border-bottom: 1px solid var(--line-2); line-height: 1.35;
+    color: var(--ink);
+  }
+  table.review-tbl thead th {
+    background: var(--accent-2); font-weight: 700;
+    color: var(--accent); border-bottom: 1px solid var(--accent-3);
+    font-size: 15px; letter-spacing: 0.02em;
+  }
+  table.review-tbl td.k {
+    font-weight: 700; color: var(--ink);
+    width: 22%; white-space: nowrap;
+  }
+  table.review-tbl td.k .dot {
+    display: inline-block; width: 7px; height: 7px;
+    background: var(--accent); margin-right: 8px; vertical-align: 2px;
+  }
+  table.review-tbl tr:last-child td { border-bottom: none; }
+  table.review-tbl .num {
+    color: var(--accent); font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* 04 architecture SVG */
+  .arch-block {
+    background: var(--card); border: 1px solid var(--line);
+    padding: 14px 20px;
+    flex: 1;
+    min-height: 0;
+    display: flex; flex-direction: column;
+  }
+  .arch-svg-wrap {
+    flex: 1;
+    display: flex; align-items: stretch;
+    min-height: 0;
+  }
+  .arch-svg-wrap svg {
+    width: 100%; height: 100%; display: block;
+  }
+
+  /* Summary banner (footer) */
+  .summary {
+    background: var(--dark); color: #e7edf3;
+    padding: 6px 22px;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 24px;
+  }
+  .summary .label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; color: #6fb0ff; letter-spacing: 0.1em;
+    text-transform: uppercase; font-weight: 500;
+    margin-bottom: 2px;
+  }
+  .summary .txt {
+    font-size: 20px; font-weight: 700; line-height: 1.3;
+  }
+  .summary .txt em { color: #6fb0ff; font-style: normal; }
+  .summary .pg {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px; color: #8ea4bd;
+    white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+
+<deck-stage width="1920" height="1080">
+
+  <!-- ============ SLIDE 1 — WHY ============ -->
+  <section data-label="AssiWorks 1 — WHY · 문제와 약속">
+    <div class="frame">
+
+      <div class="brand-logos">
+        <img src="images/aifactory_logo.png" alt="AI Factory">
+        <span class="divider"></span>
+        <img src="images/assiworks_logo.png" alt="AssiWorks">
+      </div>
+
+      <div class="hd">
+        <div class="left">
+          <div class="eyebrow">HARNESS2DEEPAGENTS · CLAUDE → LANGCHAIN · WHY</div>
+          <h1>"수동 포팅"이 아니라, <b>IR 기반 자동 변환</b>으로 옮깁니다</h1>
+        </div>
+        <div class="meta">
+          <div class="item"><span class="lbl">제공</span><b>인공지능팩토리</b></div>
+          <div class="item"><span class="lbl">검증</span><b>Self-port PASS</b></div>
+          <div class="item"><span class="lbl">변환 점수</span><b>0.0 ~ 1.0</b></div>
+        </div>
+      </div>
+
+      <div class="why-top">
+
+        <div>
+          <div class="sec-h"><span class="n">01</span><span class="t">harness2deepagents 6대 구성</span><span class="tail"></span></div>
+          <div class="overview-card">
+            <div class="ov-top">Claude Code → DeepAgents 변환 파이프라인</div>
+            <ul class="ov-list">
+              <li><span class="lbl">IR</span><span class="dsc">harness.deepagents.ir.yaml 단일 SoT</span></li>
+              <li><span class="lbl">Extractor</span><span class="dsc">.claude/agents · skills · .mcp.json 파싱</span></li>
+              <li><span class="lbl">Emitter</span><span class="dsc">create_deep_agent 기반 Python 앱 방출</span></li>
+              <li><span class="lbl">Validator</span><span class="dsc">import · compile · secret · smoke 7단계</span></li>
+              <li><span class="lbl">Reporter</span><span class="dsc">13섹션 보고서 + 품질 점수 0.0~1.0</span></li>
+              <li><span class="lbl">Skills Copy</span><span class="dsc">references · scripts · assets 무손실 복사</span></li>
+            </ul>
+            <div class="ov-bottom">raw LangGraph가 아니라 — <em>DeepAgents 전용</em> 변환</div>
+          </div>
+        </div>
+
+        <div>
+          <div class="sec-h"><span class="n">02</span><span class="t">현장의 고민 → 우리의 답</span><span class="tail"></span></div>
+          <ul class="pub-list">
+            <li class="is-problem"><span class="tag">현장</span><span class="bd">Claude Code 하네스가 <b>.claude/에 갇혀</b> 있다 — Python 운영에서 실행 불가</span></li>
+            <li class="is-problem"><span class="tag">현장</span><span class="bd">수동 포팅은 <b>구조 손실</b> · prompt 평탄화 · skill 누락 위험</span></li>
+            <li><span class="tag">INSIGHT</span><span class="bd">TeamCreate · SendMessage는 LangChain에 <b>1:1 대응</b>이 없다</span></li>
+            <li><span class="tag">INSIGHT</span><span class="bd">에이전트 분리 · 스킬 트리거 · 오케스트레이션이 <b>변환 손실의 핵심</b></span></li>
+            <li><span class="tag">REBUILD</span><span class="bd"><b>IR 우선</b> — agent · skill · orchestrator · artifact 4분리 보존</span></li>
+            <li><span class="tag">PROOF</span><span class="bd">Self-port 통과 — <b>4 agents · 5 skills</b> 무손실 변환 검증</span></li>
+            <li class="is-answer"><span class="tag">PROMISE</span><span class="bd"><b>DeepAgents only</b> — raw LangGraph는 절대 생성하지 않습니다</span></li>
+          </ul>
+        </div>
+      </div>
+
+      <div style="flex: 1; min-height: 0; display: flex; flex-direction: column;">
+        <div class="sec-h"><span class="n">03</span><span class="t">harness2deepagents가 약속하는 변환</span><span class="tail"></span></div>
+        <div class="promise-block" style="flex: 1;">
+          <div>
+            <div class="qk">VALUE PROPOSITION</div>
+            <div class="lead">
+              <b>인공지능팩토리</b>는 Claude Code 하네스를 LangChain 운영 환경에서 그대로 실행 가능하게 만듭니다. harness2deepagents는 <b>IR을 단일 source of truth</b>로 두고, 4-에이전트 파이프라인이 DeepAgents 앱을 방출하며, 7단계 검증으로 안전성을 보장합니다.
+            </div>
+          </div>
+          <div class="punch-banner">"우리는 <em>포팅 스크립트</em>를 파는 것이 아닙니다. <em>감사 가능한 변환 파이프라인</em>을 제공합니다."</div>
+          <div class="factory-grid">
+            <div class="factory-side dark">
+              <h4>책임의 이동</h4>
+              <div class="lead">수동 포팅 → <em>IR 기반 자동 변환</em></div>
+              <div class="shift-row">
+                <span class="from">사람이 일일이 옮김</span>
+                <span class="arrow">→</span>
+                <span class="to">IR → codegen · 7단계 검증</span>
+              </div>
+              <div class="factory-mini-note">원본 .claude 불변 · timestamp 폴백 · secret 마스킹</div>
+            </div>
+            <div class="factory-side">
+              <h4>4대 안전 보장</h4>
+              <ul>
+                <li><b>IR 우선</b> 단일 source of truth · 감사 가능</li>
+                <li><b>DeepAgents only</b> raw LangGraph 절대 금지</li>
+                <li><b>Secret 마스킹</b> .mcp.json redact · 코드 미하드코딩</li>
+                <li><b>원본 불변</b> .claude/agents · skills 미수정</li>
+              </ul>
+            </div>
+          </div>
+          <div>
+            <div class="metrics-title">도입 효과는 <em>'측정'으로 증명</em></div>
+          </div>
+          <div class="metrics-grid">
+            <div class="metric">
+              <div class="m-label">변환 시간</div>
+              <div class="m-detail">수동 포팅 대비 단축</div>
+            </div>
+            <div class="metric">
+              <div class="m-label">자동화 비율</div>
+              <div class="m-detail">4-agent 파이프라인 처리</div>
+            </div>
+            <div class="metric">
+              <div class="m-label">검증 통과율</div>
+              <div class="m-detail">7단계 정적 검증 PASS</div>
+            </div>
+            <div class="metric">
+              <div class="m-label">변환 품질</div>
+              <div class="m-detail">가중 점수 0.0 ~ 1.0</div>
+            </div>
+            <div class="metric">
+              <div class="m-label">손실률</div>
+              <div class="m-detail">prompt · skill · tool 유실</div>
+            </div>
+            <div class="metric">
+              <div class="m-label">재실행성</div>
+              <div class="m-detail">timestamp 폴백 · IR 재사용</div>
+            </div>
+          </div>
+          <div class="metrics-title">시작 단계 — <em>30일 안에 첫 변환 완료</em></div>
+          <div class="start-steps">
+            <div class="start-step">
+              <span class="phase">WEEK 1</span>
+              <span class="body"><b>.claude 감사</b> — audit_only 모드로 IR 만 생성</span>
+            </div>
+            <div class="start-step">
+              <span class="phase">WEEK 2-3</span>
+              <span class="body"><b>파일럿 포팅</b> — IR 검토 + 수동 액션 처리</span>
+            </div>
+            <div class="start-step">
+              <span class="phase">WEEK 4+</span>
+              <span class="body"><b>운영 배포</b> — DeepAgents 앱 통합 · 검증 반복</span>
+            </div>
+          </div>
+          <div class="vip-note">
+            <b>Early Access</b> — IR 스키마 v1 우선 체험 · 자사 하네스 변환 컨설팅 · 변환 품질 리포트
+          </div>
+        </div>
+      </div>
+
+      <div class="summary">
+        <div>
+          <div class="label">h2d Mission</div>
+          <div class="txt">여러분의 Claude Code 하네스를 <em>재실행 가능한 DeepAgents 앱</em>으로 재빌딩하겠습니다</div>
+        </div>
+        <div class="pg">HARNESS2DEEPAGENTS · 01 / 02</div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============ SLIDE 2 — HOW ============ -->
+  <section data-label="harness2deepagents 2 — HOW · 파이프라인과 4계층 아키텍처">
+    <div class="frame">
+
+      <div class="brand-logos">
+        <img src="images/aifactory_logo.png" alt="AI Factory">
+        <span class="divider"></span>
+        <img src="images/assiworks_logo.png" alt="AssiWorks">
+      </div>
+
+      <div class="hd">
+        <div class="left">
+          <div class="eyebrow">HARNESS2DEEPAGENTS · CLAUDE → LANGCHAIN · HOW</div>
+          <h1><b>4-에이전트 파이프라인</b>으로 짓고, <b>7단계 검증</b>으로 통제합니다</h1>
+        </div>
+        <div class="meta">
+          <div class="item"><span class="lbl">파이프라인</span><b>Extract → Report</b></div>
+          <div class="item"><span class="lbl">검증</span><b>7 단계</b></div>
+          <div class="item"><span class="lbl">아키텍처</span><b>4 Layers</b></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="sec-h"><span class="n">04</span><span class="t">5단계 변환 파이프라인</span><span class="tail"></span></div>
+        <div class="review-flow">
+          <div class="rstep">
+            <div class="k">STEP 1</div>
+            <div class="t">Discover</div>
+            <ul class="step-points">
+              <li>.claude/* · .mcp.json 발견</li>
+              <li>frontmatter · glob 파싱</li>
+            </ul>
+          </div>
+          <div class="rstep">
+            <div class="k">STEP 2</div>
+            <div class="t">Extract</div>
+            <ul class="step-points">
+              <li>orchestrator · 패턴 점수화</li>
+              <li>Claude-only 연산 식별</li>
+            </ul>
+          </div>
+          <div class="rstep">
+            <div class="k">STEP 3</div>
+            <div class="t">Emit</div>
+            <ul class="step-points">
+              <li>create_deep_agent 코드 방출</li>
+              <li>skills 복사 · secret 마스킹</li>
+            </ul>
+          </div>
+          <div class="rstep">
+            <div class="k">STEP 4</div>
+            <div class="t">Validate</div>
+            <ul class="step-points">
+              <li>7단계 정적 검증</li>
+              <li>fail 시 1회 fix 요청</li>
+            </ul>
+          </div>
+          <div class="rstep final">
+            <div class="k">STEP 5</div>
+            <div class="t">Report</div>
+            <ul class="step-points">
+              <li>13섹션 변환 보고서</li>
+              <li>품질 점수 0.0 ~ 1.0</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1.05fr; gap: 24px; flex: 1; min-height: 0;">
+
+        <div style="display: flex; flex-direction: column;">
+          <div class="sec-h"><span class="n">05</span><span class="t">변환 보장 — 7 핵심 설계 결정</span><span class="tail"></span></div>
+          <table class="review-tbl" style="flex: 1;">
+            <thead>
+              <tr><th>영역</th><th>설계 · 보장</th></tr>
+            </thead>
+            <tbody>
+              <tr><td class="k"><span class="dot"></span>IR 스키마</td><td>schema_version <span class="num">"harness2deepagents/v1"</span> — agent · skill · orchestrator 통합</td></tr>
+              <tr><td class="k"><span class="dot"></span>에이전트 팀</td><td>extractor · emitter · validator · reporter — Pipeline + Producer-Reviewer</td></tr>
+              <tr><td class="k"><span class="dot"></span>스킬 패키지</td><td>harness2deepagents + <span class="num">4 sub-skill</span> (extraction · emission · validation · reporting)</td></tr>
+              <tr><td class="k"><span class="dot"></span>7단계 검증</td><td>import · compile · secret · skill copy · raw-LG 금지 · smoke · consistency</td></tr>
+              <tr><td class="k"><span class="dot"></span>품질 점수 가중치</td><td>agents <span class="num">.20</span> · skills <span class="num">.20</span> · validation <span class="num">.15</span> · orchestrator <span class="num">.15</span> · 외 4항</td></tr>
+              <tr><td class="k"><span class="dot"></span>Self-port 검증</td><td>4 agents · 5 skills · IR <span class="num">47 KB</span> · compile · smoke PASS</td></tr>
+              <tr><td class="k"><span class="dot"></span>안전 정책</td><td>원본 .claude 불변 · timestamp 폴백 · .mcp.json secret 마스킹</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div style="display: flex; flex-direction: column;">
+          <div class="sec-h"><span class="n">06</span><span class="t">harness2deepagents 시스템 구성도 — 4계층 아키텍처</span><span class="tail"></span></div>
+          <div class="arch-block">
+            <div class="arch-svg-wrap">
+              <svg viewBox="0 0 1000 700" preserveAspectRatio="xMidYMid meet">
+                <defs>
+                  <marker id="arr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+                    <path d="M0,0 L10,5 L0,10 z" fill="#2f6dbf"/>
+                  </marker>
+                  <pattern id="dotbg2" width="14" height="14" patternUnits="userSpaceOnUse">
+                    <circle cx="2" cy="2" r="1.2" fill="#d8e5f4"/>
+                  </pattern>
+                </defs>
+
+                <rect width="1000" height="700" fill="#fbfcfd"/>
+                <rect width="1000" height="700" fill="url(#dotbg2)" opacity="0.55"/>
+
+                <!-- Header label only -->
+                <text x="40" y="24" font-family="Noto Sans KR" font-size="14" font-weight="700" fill="#6b7c8f" letter-spacing="0.5">harness2deepagents Pipeline · 4-layer architecture</text>
+
+                <!-- Top: User (smaller, less overlap) -->
+                <g transform="translate(500, 60)">
+                  <rect x="-110" y="-22" width="220" height="44" rx="22" fill="#fff" stroke="#2f6dbf" stroke-width="1.5"/>
+                  <text x="0" y="7" text-anchor="middle" font-family="Noto Sans KR" font-size="18" font-weight="700" fill="#14202b">사용자 · 운영팀</text>
+                </g>
+                <line x1="500" y1="104" x2="500" y2="132" stroke="#2f6dbf" stroke-width="1.5" stroke-dasharray="4 4" marker-end="url(#arr2)"/>
+                <text x="514" y="124" font-family="JetBrains Mono" font-size="13" fill="#2f6dbf" letter-spacing="0.5">변환 요청</text>
+
+                <!-- L4: Validator (light variant - accent border) -->
+                <rect x="80" y="138" width="840" height="92" rx="8" fill="#eaf2fb" stroke="#2f6dbf" stroke-width="2"/>
+                <text x="102" y="166" font-family="JetBrains Mono" font-size="13" fill="#2f6dbf" letter-spacing="1">L4 · VALIDATOR</text>
+                <text x="102" y="196" font-family="Noto Sans KR" font-size="22" font-weight="700" fill="#14202b">검증 가능한 변환</text>
+                <g font-family="Noto Sans KR" font-size="14" fill="#14202b">
+                  <g transform="translate(390,200)">
+                    <rect x="-6" y="-18" width="120" height="32" rx="4" fill="#fff" stroke="#cfdcec"/>
+                    <text x="54" y="3" text-anchor="middle">import · compile</text>
+                  </g>
+                  <g transform="translate(528,200)">
+                    <rect x="-6" y="-18" width="128" height="32" rx="4" fill="#fff" stroke="#cfdcec"/>
+                    <text x="58" y="3" text-anchor="middle">secret 스캔</text>
+                  </g>
+                  <g transform="translate(670,200)">
+                    <rect x="-6" y="-18" width="166" height="32" rx="4" fill="#fff" stroke="#cfdcec"/>
+                    <text x="77" y="3" text-anchor="middle">skill copy 완전성</text>
+                  </g>
+                  <g transform="translate(852,200)">
+                    <rect x="-6" y="-18" width="64" height="32" rx="4" fill="#fff" stroke="#cfdcec"/>
+                    <text x="26" y="3" text-anchor="middle">smoke</text>
+                  </g>
+                </g>
+
+                <!-- arrows L4 → L3 -->
+                <path d="M270,230 V296" stroke="#2f6dbf" stroke-width="1.8" fill="none" marker-end="url(#arr2)"/>
+                <text x="284" y="268" font-family="JetBrains Mono" font-size="13" fill="#2f6dbf" letter-spacing="0.5">검증 · fix</text>
+                <path d="M730,230 V296" stroke="#2f6dbf" stroke-width="1.8" fill="none" marker-end="url(#arr2)"/>
+                <text x="744" y="268" font-family="JetBrains Mono" font-size="13" fill="#2f6dbf" letter-spacing="0.5">결과 통합</text>
+
+                <!-- L3: Emitter + Reporter (aligned to L4 extents) -->
+                <g>
+                  <rect x="80" y="302" width="380" height="96" rx="8" fill="#eaf2fb" stroke="#7aa3d1" stroke-width="1.5"/>
+                  <text x="100" y="324" font-family="JetBrains Mono" font-size="13" fill="#2f6dbf" letter-spacing="1">L3 · EMITTER</text>
+                  <text x="100" y="352" font-family="Noto Sans KR" font-size="20" font-weight="700" fill="#14202b">DeepAgents 앱 방출</text>
+                  <text x="100" y="375" font-family="Noto Sans KR" font-size="14" fill="#34465a">create_deep_agent · fix 1회 루프</text>
+                </g>
+                <g>
+                  <rect x="540" y="302" width="380" height="96" rx="8" fill="#eaf2fb" stroke="#7aa3d1" stroke-width="1.5"/>
+                  <text x="560" y="324" font-family="JetBrains Mono" font-size="13" fill="#2f6dbf" letter-spacing="1">L3 · REPORTER</text>
+                  <text x="560" y="352" font-family="Noto Sans KR" font-size="20" font-weight="700" fill="#14202b">변환 보고서 작성</text>
+                  <text x="560" y="375" font-family="Noto Sans KR" font-size="14" fill="#34465a">13섹션 · 품질 점수 0.0 ~ 1.0</text>
+                </g>
+
+                <!-- arrows L3 → L2 -->
+                <path d="M270,398 V468" stroke="#2f6dbf" stroke-width="1.8" fill="none" marker-end="url(#arr2)"/>
+                <text x="284" y="438" font-family="JetBrains Mono" font-size="13" fill="#2f6dbf" letter-spacing="0.5">IR 소비</text>
+                <path d="M730,398 V468" stroke="#2f6dbf" stroke-width="1.8" fill="none" marker-end="url(#arr2)"/>
+                <text x="744" y="438" font-family="JetBrains Mono" font-size="13" fill="#2f6dbf" letter-spacing="0.5">결과 수신</text>
+
+                <!-- L2: Extractor (FULL WIDTH aligned to L3/L1 column extents) -->
+                <g>
+                  <rect x="80" y="474" width="840" height="80" rx="8" fill="#fff" stroke="#cfdcec" stroke-width="1.5"/>
+                  <text x="100" y="498" font-family="JetBrains Mono" font-size="13" fill="#2f6dbf" letter-spacing="1">L2 · EXTRACTOR</text>
+                  <text x="100" y="528" font-family="Noto Sans KR" font-size="20" font-weight="700" fill="#14202b">파싱 · 분석 · IR 빌드 (단일 source of truth)</text>
+                </g>
+
+                <!-- arrows L2 → L1 -->
+                <path d="M270,554 V618" stroke="#2f6dbf" stroke-width="1.8" fill="none" marker-end="url(#arr2)"/>
+                <text x="284" y="592" font-family="JetBrains Mono" font-size="13" fill="#2f6dbf" letter-spacing="0.5">파일 읽기</text>
+                <path d="M730,554 V618" stroke="#2f6dbf" stroke-width="1.8" fill="none" marker-end="url(#arr2)"/>
+                <text x="744" y="592" font-family="JetBrains Mono" font-size="13" fill="#2f6dbf" letter-spacing="0.5">IR 쓰기</text>
+
+                <!-- L1: Harness Source + IR Artifact -->
+                <g>
+                  <rect x="80" y="626" width="380" height="64" rx="8" fill="#fff" stroke="#cfdcec" stroke-width="1.5"/>
+                  <text x="100" y="648" font-family="JetBrains Mono" font-size="13" fill="#2f6dbf" letter-spacing="1">L1 · SOURCE</text>
+                  <text x="100" y="670" font-family="Noto Sans KR" font-size="18" font-weight="700" fill="#14202b">.claude/agents · skills · .mcp.json</text>
+                </g>
+                <g>
+                  <rect x="540" y="626" width="380" height="64" rx="8" fill="#fff" stroke="#cfdcec" stroke-width="1.5"/>
+                  <text x="560" y="648" font-family="JetBrains Mono" font-size="13" fill="#2f6dbf" letter-spacing="1">L1 · ARTIFACT</text>
+                  <text x="560" y="670" font-family="Noto Sans KR" font-size="18" font-weight="700" fill="#14202b">harness.deepagents.ir.yaml</text>
+                </g>
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="summary">
+        <div>
+          <div class="label">h2d Mission</div>
+          <div class="txt">사람은 <em>"감사"</em>에, 파이프라인은 <em>"변환"</em>에 — 각자의 강점에 집중하는 포팅 시스템</div>
+        </div>
+        <div class="pg">HARNESS2DEEPAGENTS · 02 / 02</div>
+      </div>
+
+    </div>
+  </section>
+
+</deck-stage>
+
+</body>
+</html>

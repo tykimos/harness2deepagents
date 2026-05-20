@@ -1,0 +1,21 @@
+[project]
+name = "{{PROJECT_NAME}}"
+version = "0.1.0"
+description = "DeepAgents app generated from RevFactory Harness output"
+requires-python = ">=3.11"
+dependencies = [
+  "deepagents",
+  "langchain",
+  "langchain-anthropic",
+  "langchain-openai",
+  "langgraph-cli[inmem]",
+  "python-dotenv",
+  "pyyaml",
+]
+
+[tool.harness2deepagents]
+generated = true
+source = "revfactory/harness"
+target = "deepagents"
+generated_at = "{{GENERATED_AT}}"
+ui_default = "langchain-ai/deep-agents-ui"

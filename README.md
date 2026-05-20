@@ -1,0 +1,595 @@
+# harness2deepagents
+
+> 📦 **Install (one-liner):** `git clone https://github.com/tykimos/harness2deepagents.git /tmp/harness2deepagents && cp -R /tmp/harness2deepagents/.claude/skills/* ~/.claude/skills/ && cp -R /tmp/harness2deepagents/.claude/agents/* ~/.claude/agents/` — full instructions in [INSTALL.md](INSTALL.md).
+
+**RevFactory `/harness`로 만든 Claude Code 에이전트 팀을, 실행 가능한 LangChain DeepAgents Python 앱으로 자동 변환하는 Claude Code 스킬.**
+
+`/harness`가 자신의 강점인 "선언적 에이전트 팀 설계"를 책임진다면, `harness2deepagents`는 그 산출물을 받아 **즉시 `langgraph dev`로 띄울 수 있고, 기본 UI(`langchain-ai/deep-agents-ui`)까지 붙은 Python 패키지**로 바꿔준다.
+
+- **버전:** v0.2.0
+- **소스 포맷:** `.claude/agents/*.md`, `.claude/skills/*/SKILL.md`, `.mcp.json`, `CLAUDE.md`
+- **타겟:** `from deepagents import create_deep_agent` 기반 Python 앱
+- **기본 UI:** [`langchain-ai/deep-agents-ui`](https://github.com/langchain-ai/deep-agents-ui) (자동 wiring)
+- **금지:** raw LangGraph emitter, 단일 `create_agent` 앱, secret 하드코딩
+
+---
+
+## 한 장 요약
+
+```mermaid
+flowchart LR
+    subgraph SRC["INPUT — RevFactory Harness 산출물"]
+        A1[".claude/agents/*.md"]
+        A2[".claude/skills/*/SKILL.md"]
+        A3[".mcp.json"]
+        A4["CLAUDE.md"]
+    end
+
+    subgraph H2D["harness2deepagents (이 스킬)"]
+        direction TB
+        E1["1·extractor<br/>(IR 생성)"]
+        E2["2·emitter<br/>(코드 방출)"]
+        E3["3·validator<br/>(11-stage 검증)"]
+        E4["4·reporter<br/>(보고서)"]
+        E1 --> E2 --> E3 --> E4
+        E3 -. "fix loop ×1" .-> E2
+    end
+
+    subgraph OUT["OUTPUT — ports/deepagents/"]
+        O1["app/agent.py<br/>create_deep_agent"]
+        O2["app/skills/*<br/>(원본 보존)"]
+        O3["app/langgraph.json<br/>graph: deepagent"]
+        O4["app/bootstrap_ui.sh<br/>(deep-agents-ui clone)"]
+        O5["app/.env.example<br/>(5 providers)"]
+        O6["app/.gitignore"]
+        O7["conversion_report.md<br/>+ logs/validation.json"]
+    end
+
+    SRC --> H2D --> OUT
+
+    style H2D fill:#fef3c7,stroke:#f59e0b
+    style OUT fill:#dcfce7,stroke:#16a34a
+    style SRC fill:#dbeafe,stroke:#2563eb
+```
+
+---
+
+## 언제 쓰는가
+
+| 트리거 | 동작 |
+|---|---|
+| `/harness2deepagents` | 현재 디렉토리에서 `.claude/`를 찾아 `ports/deepagents/`로 변환 (full 모드) |
+| `/harness2deepagents audit only` | 코드 생성 없이 IR + conversion_report만 생성 |
+| `/h2d` | full 모드 alias |
+| "이 .claude를 DeepAgents로 변환" / "하네스 마이그레이션" / "Claude Code 팀을 LangChain으로" | 자연어 트리거 |
+
+쓰지 말아야 할 케이스:
+
+- "harness 만들어줘" → `/harness` (생성용, 변환 아님)
+- "LangGraph로 graph 만들어줘" → out of scope (raw LangGraph는 의도적으로 거부)
+- "deepagents 라이브러리 설치 방법" → 일반 질문
+
+---
+
+## 4-에이전트 팀 구성
+
+`harness2deepagents`는 단일 모놀리식 변환기가 아니라 **Pipeline + Producer-Reviewer** 패턴의 4-에이전트 팀이다.
+
+```mermaid
+graph TB
+    User([User])
+
+    Orchestrator{{"orchestrator<br/>(harness2deepagents)"}}
+
+    subgraph Team["harness2deepagents-team"]
+        direction LR
+        Extractor["📥 harness-extractor<br/><i>스킬: harness-source-extraction</i><br/>.claude → IR YAML"]
+        Emitter["⚙️ deepagents-emitter<br/><i>스킬: deepagents-emission</i><br/>IR → app/ 코드"]
+        Validator["🛡️ port-validator<br/><i>스킬: port-validation</i><br/>11-stage 검증"]
+        Reporter["📝 conversion-reporter<br/><i>스킬: conversion-reporting</i><br/>IR + 검증 → 보고서"]
+    end
+
+    User -->|"/harness2deepagents"| Orchestrator
+    Orchestrator -->|TeamCreate + TaskCreate| Team
+    Extractor -->|IR yaml| Emitter
+    Emitter -->|app/*| Validator
+    Validator -->|"fix request (×1)"| Emitter
+    Validator -->|validation.json| Reporter
+    Emitter --> Reporter
+    Reporter -->|"✅ Service-ready handoff"| User
+
+    style Extractor fill:#dbeafe
+    style Emitter fill:#fef3c7
+    style Validator fill:#fee2e2
+    style Reporter fill:#dcfce7
+```
+
+| # | 팀원 | 입력 | 출력 | 핵심 책임 |
+|---|------|------|------|----------|
+| 1 | **harness-extractor** | `.claude/*`, `.mcp.json`, `CLAUDE.md` | `_workspace/01_extractor_ir.yaml` | 파싱 + 패턴 추정 + secret 마스킹 |
+| 2 | **deepagents-emitter** | IR YAML | `output_dir/app/*` (12개 파일) | 결정적 코드 생성, `@tool` wrap, UI wiring |
+| 3 | **port-validator** | `output_dir/app/*` | `logs/validation.json` | compile/secret/smoke/anti-pattern 검증 (11 stages) |
+| 4 | **conversion-reporter** | IR + validation.json | `conversion_report.md` + 품질 점수 | 운영-준비 handoff 체크리스트 |
+
+`audit_only` 모드에서는 extractor + reporter만 동작하며 코드 방출은 차단된다.
+
+---
+
+## 변환 워크플로우 (7 phase)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant O as Orchestrator
+    participant X as extractor
+    participant E as emitter
+    participant V as validator
+    participant R as reporter
+
+    U->>O: /harness2deepagents
+    O->>O: Phase 1 — mode 결정<br/>(full / audit_only)<br/>(tools_mode: mock_fallback / strict_stub)
+    O->>O: Phase 2 — TeamCreate + TaskCreate
+
+    O->>X: Phase 3 — Extract
+    Note over X: .claude/agents, skills, .mcp.json 파싱<br/>오케스트레이터 점수화<br/>아키텍처 패턴 추정<br/>secret 마스킹
+    X-->>O: 01_extractor_ir.yaml
+
+    alt mode == full
+        O->>E: Phase 4 — Emit
+        Note over E: main prompt 합성<br/>SUBAGENTS 배열<br/>@tool 자동 wrap<br/>app/skills/ 복사<br/>langgraph.json + bootstrap_ui.sh
+        E-->>O: ports/deepagents/app/*
+
+        O->>V: Phase 5 — Validate (11 stages)
+        Note over V: YAML parse · required files · compile<br/>· skill copy · secret scan · smoke import<br/>· anti-pattern · @tool · stream timeout · gitignore
+        alt validation fail
+            V->>E: SendMessage(fix)
+            E->>V: 재방출
+        end
+        V-->>O: logs/validation.json
+    end
+
+    O->>R: Phase 6 — Report
+    Note over R: IR + validation 통합<br/>13개 섹션 conversion_report<br/>품질 점수 (0.0~1.0)
+    R-->>O: conversion_report.md
+
+    O->>U: Phase 7 — Service-ready handoff<br/>(8단계 실행 체크리스트)
+```
+
+---
+
+## 생성되는 앱 구조
+
+```mermaid
+graph LR
+    Root["ports/deepagents/"]
+    Root --> IR["harness.deepagents.ir.yaml<br/>(IR 최종본)"]
+    Root --> Report["conversion_report.md"]
+    Root --> Logs["logs/validation.json"]
+    Root --> App["app/"]
+
+    App --> Agent["agent.py<br/>create_deep_agent +<br/>MAIN_SYSTEM_PROMPT +<br/>SUBAGENTS = [...]"]
+    App --> Config["config.py<br/>Settings(model, app_name, ...)"]
+    App --> Tools["tools.py<br/>@tool wrap +<br/>mock_fallback or<br/>strict_stub"]
+    App --> Smoke["smoke_test.py"]
+    App --> Reqs["requirements.txt"]
+    App --> Proj["pyproject.toml"]
+    App --> Readme["README.md<br/>(provider matrix +<br/>run sequences)"]
+    App --> LG["langgraph.json<br/>graphs.deepagent →<br/>./agent.py:agent"]
+    App --> Env[".env.example<br/>(5 providers)"]
+    App --> Boot["bootstrap_ui.sh<br/>(chmod 0o755)"]
+    App --> GI[".gitignore<br/>(.env 보호)"]
+    App --> Skills["skills/<br/>(원본 .claude/skills 복사)"]
+    App --> Mcp["(옵션) .mcp.json +<br/>mcp_tools.py"]
+
+    style Root fill:#fef3c7
+    style App fill:#dbeafe
+    style Skills fill:#dcfce7
+    style Boot fill:#fce7f3
+    style LG fill:#fce7f3
+    style Env fill:#fce7f3
+```
+
+**핵심:** 분홍색 박스(`bootstrap_ui.sh`, `langgraph.json`, `.env.example`)가 **v0.2부터 기본 포함**되어, 사용자가 별도 wiring 없이 deep-agents-ui를 실행할 수 있다.
+
+---
+
+## 기본 UI 런타임 토폴로지
+
+```mermaid
+flowchart LR
+    Browser[("🌐 Browser<br/>http://localhost:3000")]
+
+    subgraph UIProc["Next.js UI Process"]
+        UI["langchain-ai/deep-agents-ui<br/>(./ui/ — bootstrap_ui.sh로 clone)"]
+        EnvLocal["ui/.env.local<br/>NEXT_PUBLIC_DEPLOYMENT_URL=http://127.0.0.1:2024<br/>NEXT_PUBLIC_AGENT_ID=deepagent"]
+    end
+
+    subgraph BackendProc["Python Backend Process"]
+        LGDev["langgraph dev --port 2024"]
+        LGJson["langgraph.json<br/>graphs.deepagent → agent:agent"]
+        AgentPy["agent.py<br/>create_deep_agent(...)"]
+        Subagents["SUBAGENTS[]<br/>= 원본 Harness agents"]
+        ToolsPy["tools.py<br/>@tool wrapped"]
+        SkillsDir["skills/<br/>(filesystem)"]
+    end
+
+    subgraph Provider["LLM Provider (.env로 선택)"]
+        direction TB
+        Anth["Anthropic"]
+        Oai["OpenAI"]
+        Az["Azure OpenAI"]
+        Bed["Bedrock"]
+        Vx["Vertex"]
+    end
+
+    Browser <-->|LangGraph SDK<br/>WebSocket/HTTP| UIProc
+    UIProc <-->|HTTP/WS<br/>:2024| BackendProc
+    LGDev --> LGJson --> AgentPy
+    AgentPy --> Subagents
+    AgentPy --> ToolsPy
+    AgentPy --> SkillsDir
+    AgentPy <-->|init_chat_model| Provider
+
+    style Browser fill:#e0e7ff
+    style UIProc fill:#fce7f3
+    style BackendProc fill:#dbeafe
+    style Provider fill:#fef3c7
+```
+
+**실행 순서 (생성된 앱의 README가 그대로 안내):**
+
+```bash
+cd ports/deepagents/app
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env             # provider 블록 uncomment + 키
+set -a; source .env; set +a
+python smoke_test.py             # import 확인
+
+# 터미널 A — 백엔드
+langgraph dev --port 2024 --no-browser
+# → http://127.0.0.1:2024/ok 확인
+
+# 터미널 B — UI (최초 1회만 bootstrap)
+bash bootstrap_ui.sh
+cd ui && yarn install            # Node 20+ 권장
+yarn dev                         # http://localhost:3000
+```
+
+---
+
+## Provider 매트릭스 (provider-agnostic)
+
+`DEEPAGENTS_MODEL` 환경변수가 LangChain `init_chat_model` 형식을 따른다. **어떤 provider든 코드 변경 없이** `.env`만 바꾸면 된다.
+
+```mermaid
+flowchart TB
+    Env["DEEPAGENTS_MODEL=<br/>provider:model"]
+
+    Env --> Router{"init_chat_model<br/>(langchain)"}
+
+    Router -->|"anthropic:claude-sonnet-4-6"| Anth["langchain-anthropic<br/>ANTHROPIC_API_KEY"]
+    Router -->|"openai:gpt-4o"| Oai["langchain-openai<br/>OPENAI_API_KEY"]
+    Router -->|"azure_openai:&lt;deployment&gt;"| Az["langchain-openai<br/>AZURE_OPENAI_API_KEY<br/>AZURE_OPENAI_ENDPOINT<br/>OPENAI_API_VERSION=<br/>2025-01-01-preview<br/>AZURE_OPENAI_DEPLOYMENT_NAME"]
+    Router -->|"bedrock_converse:..."| Bed["langchain-aws<br/>AWS_ACCESS_KEY_ID<br/>AWS_SECRET_ACCESS_KEY<br/>AWS_REGION"]
+    Router -->|"google_vertexai:..."| Vx["langchain-google-vertexai<br/>GOOGLE_APPLICATION_CREDENTIALS"]
+
+    style Anth fill:#fef3c7
+    style Oai fill:#dcfce7
+    style Az fill:#dbeafe
+    style Bed fill:#fce7f3
+    style Vx fill:#e0e7ff
+```
+
+| Provider | `DEEPAGENTS_MODEL` 예 | 필요한 env | 추가 설치 |
+|---|---|---|---|
+| **Anthropic** (default) | `anthropic:claude-sonnet-4-6` | `ANTHROPIC_API_KEY` | — (기본 포함) |
+| **OpenAI** | `openai:gpt-4o` | `OPENAI_API_KEY` | — (기본 포함) |
+| **Azure OpenAI** | `azure_openai:<deployment-name>` | `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `OPENAI_API_VERSION=2025-01-01-preview`, `AZURE_OPENAI_DEPLOYMENT_NAME` | — (기본 포함) |
+| **AWS Bedrock** | `bedrock_converse:anthropic.claude-3-5-sonnet-...` | AWS keys + region | `pip install langchain-aws` |
+| **Google Vertex** | `google_vertexai:gemini-1.5-pro` | GCP credentials | `pip install langchain-google-vertexai` |
+
+> **Azure 주의:** `azure_openai:<deployment>` — model id가 아닌 **Azure deployment name**을 쓴다. GPT-5.x 계열은 `OPENAI_API_VERSION=2025-01-01-preview` 이상 필수.
+>
+> **Reasoning 모델 (gpt-5.x / o3 / claude-opus-extended-thinking) 주의:** `LANGCHAIN_OPENAI_STREAM_CHUNK_TIMEOUT_S=600` 미설정 시 `StreamChunkTimeoutError`로 중단된다. `.env.example`에 기본 추가됨.
+
+---
+
+## Validator 11-Stage 파이프라인 (v0.2)
+
+`port-validator`가 emitter의 산출물을 11단계로 검증한다. 어느 한 stage라도 실패하면 emitter에게 1회 fix 요청.
+
+```mermaid
+flowchart TB
+    Start([emitter 완료])
+    S1["1·IR YAML parse"]
+    S2["2·필수 파일 존재<br/>agent.py, config.py, tools.py,<br/>smoke_test.py, requirements.txt,<br/>pyproject.toml, README.md,<br/>langgraph.json, bootstrap_ui.sh,<br/>.env.example, .gitignore"]
+    S3["3·python -m compileall app"]
+    S4["4·skill 폴더 수 일치"]
+    S5["5·Secret scan<br/>sk-, AKIA, ghp_, BEGIN PRIVATE KEY"]
+    S6["6·smoke import<br/>import agent; agent.agent"]
+    S7["7·Anti-pattern<br/>from langgraph.graph 부재"]
+    S8["8·Tool registration ⭐ v0.2<br/>@tool + TOOLS 자동 등록 +<br/>IR stub 일치"]
+    S9["9·Stream timeout sanity ⭐ v0.2<br/>LANGCHAIN_OPENAI_STREAM_CHUNK_TIMEOUT_S ≥ 300"]
+    S10["10·Gitignore presence ⭐ v0.2<br/>.env / .env.* / !.env.example"]
+    S11["11·validation.json 작성"]
+
+    Done([reporter에 전달])
+    Fail{{"⚠️ Any stage fail"}}
+    FixLoop["emitter에 SendMessage<br/>(fix request, ×1)"]
+
+    Start --> S1 --> S2 --> S3 --> S4 --> S5 --> S6 --> S7 --> S8 --> S9 --> S10 --> S11 --> Done
+    S1 & S2 & S3 & S4 & S5 & S6 & S7 & S8 & S9 & S10 -.->|fail| Fail
+    Fail --> FixLoop --> S1
+
+    style S8 fill:#fef3c7,stroke:#f59e0b
+    style S9 fill:#fef3c7,stroke:#f59e0b
+    style S10 fill:#fef3c7,stroke:#f59e0b
+    style Fail fill:#fee2e2,stroke:#dc2626
+```
+
+노란색 stage(8/9/10)는 **v0.2에서 신규 추가** — v0.1 산출물을 실제 운영했을 때 발견된 함정에 대한 회귀 방어.
+
+---
+
+## 매핑 규칙 (Harness → DeepAgents)
+
+```mermaid
+graph LR
+    subgraph HARNESS["Harness 측"]
+        H_O["orchestrator skill"]
+        H_A["agents/*.md"]
+        H_S["skills/*"]
+        H_C["CLAUDE.md"]
+        H_W["_workspace/"]
+        H_M[".mcp.json"]
+        H_Op["Claude ops<br/>(TeamCreate / TaskCreate /<br/>SendMessage / parallel)"]
+    end
+
+    subgraph DA["DeepAgents 측"]
+        D_M["MAIN_SYSTEM_PROMPT<br/>(orchestrator + Notes +<br/>Delegation + Artifact + Safety)"]
+        D_S["SUBAGENTS = [...]<br/>(name + desc + prompt + skills)"]
+        D_Sk["app/skills/*<br/>(원본 구조 그대로)"]
+        D_R["README + runtime notes"]
+        D_F["filesystem/artifact policy"]
+        D_Mcp["masked .mcp.json +<br/>mcp_tools.py TODO"]
+        D_Reg["subagent registry +<br/>delegation policy +<br/>main-agent-mediated handoff"]
+    end
+
+    H_O ==> D_M
+    H_A ==> D_S
+    H_S ==> D_Sk
+    H_C ==> D_R
+    H_W ==> D_F
+    H_M ==> D_Mcp
+    H_Op ==> D_Reg
+
+    style HARNESS fill:#dbeafe
+    style DA fill:#dcfce7
+```
+
+| Harness | DeepAgents | Lossiness |
+|---|---|---|
+| `.claude/agents/*.md` body | subagent `system_prompt` (raw string 보존) | Low |
+| agent name / description | subagent `name` / `description` | Low |
+| `.claude/skills/*/` 전체 트리 | `app/skills/*/` (그대로 복사) | Low |
+| `TeamCreate` | `SUBAGENTS` registry | Low |
+| `TaskCreate` | main agent planning 지시 | Medium |
+| `SendMessage` | main-agent-mediated handoff | Medium |
+| Peer-to-peer team chat | (직접 표현 불가) | **High** |
+| `Agent(..., run_in_background=true)` | parallel delegation 지시 또는 TODO | Medium |
+
+**원칙:** Who(agent) / How(skill) / When(orchestration) / What left(artifact) 4축 분리를 유지. **prompt 평탄화 금지** — 여러 agent body를 main prompt 하나로 합치지 않는다.
+
+---
+
+## 모드 매트릭스
+
+```mermaid
+flowchart TB
+    U([User 입력])
+    M{모드}
+    Tm{도구 정책}
+
+    U --> M
+    M -->|"기본"| Full["full mode<br/>extract + emit + validate + report"]
+    M -->|"'audit only',<br/>'분석만',<br/>'점검만'"| Audit["audit_only mode<br/>extract + report만<br/>(코드 미생성)"]
+
+    Full --> Tm
+    Tm -->|"기본"| MF["mock_fallback ⭐ v0.2 default<br/>stub이 MOCK 데이터 반환<br/>워크플로우가 끝까지 동작"]
+    Tm -->|"'strict',<br/>'엄격',<br/>'raise on stub'"| SS["strict_stub<br/>stub 호출 시 NotImplementedError"]
+
+    style MF fill:#dcfce7,stroke:#16a34a
+    style SS fill:#fee2e2,stroke:#dc2626
+    style Audit fill:#dbeafe,stroke:#2563eb
+```
+
+**왜 `mock_fallback`이 v0.2 기본인가?** v0.1은 `raise NotImplementedError` + `TOOLS = []`가 기본이라 첫 도구 호출에서 워크플로우가 즉사했다. 데모/CI/오프라인에서 운영 가치가 없었다.
+
+mock 모드에서도 emitter는 각 stub의 docstring에 **reference 구현 1~2개**(Z.AI / Tavily / FAL / httpx 등)를 주석으로 함께 emit하므로, 사용자가 mock → real로 갈 때 0부터 시작하지 않는다.
+
+---
+
+## Quick Start
+
+### 1. Harness 산출물이 있는 디렉토리에서 호출
+
+```bash
+cd /path/to/your/harness-project   # .claude/agents, .claude/skills 가 있는 곳
+# Claude Code에서:
+/harness2deepagents
+```
+
+### 2. 변환이 끝나면 (≈수십 초) 다음 출력
+
+```
+✅ DeepAgents 앱 변환 완료
+- 출력: ports/deepagents/
+- 변환 점수: 0.92/1.00
+- Manual actions: 3건
+- tools_mode: mock_fallback
+
+📋 Service-ready checklist:
+1. cd ports/deepagents/app
+2. python3 -m venv .venv && source .venv/bin/activate
+3. pip install -r requirements.txt
+4. cp .env.example .env  # provider 키 채우기
+5. set -a; source .env; set +a
+6. python smoke_test.py
+7. langgraph dev --port 2024 --no-browser
+8. (옵션) bash bootstrap_ui.sh && cd ui && yarn install && yarn dev
+```
+
+위 체크리스트가 그대로 작동한다 (v0.2 회귀 방어 덕분).
+
+### 3. Audit-only로 변환 가능성만 점검
+
+```bash
+/harness2deepagents audit only
+```
+
+→ 코드 생성 없이 `_workspace/01_extractor_ir.yaml` + `conversion_report.md`만 산출.
+
+---
+
+## v0.2.0 운영 함정 카탈로그
+
+v0.1 산출물을 LangGraph 백엔드 + deep-agents-ui 프론트엔드까지 실제로 띄워본 결과 발견된 함정들. v0.2에서 emitter/validator가 모두 **코드 생성 시점에** 자동 방지한다.
+
+| # | 증상 | v0.1 원인 | v0.2 자동 방지 |
+|---|---|---|---|
+| F1 | 첫 도구 호출에서 `NotImplementedError` → 즉사 | stub `raise` + `TOOLS = []` | **mock_fallback 기본** + `TOOLS` 자동 등록 |
+| F2 | LLM이 도구 자체를 인지 못 함 | plain function (args schema 노출 X) | **`@tool` 데코레이터 의무화** (Stage 8 검증) |
+| F3 | `.env` 커밋 위험 | `.gitignore` 부재 | **`app/.gitignore` 자동 생성** (Stage 10 검증) |
+| F4 | `StreamChunkTimeoutError: 583 chunks then 120s silence` | langchain-openai 기본 120s가 reasoning 모델에 짧음 | `.env.example`에 **`LANGCHAIN_OPENAI_STREAM_CHUNK_TIMEOUT_S=600`** (Stage 9 검증) |
+| F5 | Azure GPT-5.x deployment 응답 안 함 | `OPENAI_API_VERSION=2024-10-21` 구버전 | provider notes에 **`2025-01-01-preview` 권장** |
+| F6 | UI 띄우는 게 복잡 (yarn install + Node 20) | README가 `bash bootstrap_ui.sh`만 언급 | README에 **정확한 3줄 명령 시퀀스** + Node 버전 |
+| F7 | recursion_limit 기본 25에서 빠르게 한도 도달 | DeepAgents plan/todo 노드가 사이클 소비 | README에 **`recursion_limit=50` 권장** |
+| F8 | `langgraph dev` 실행 위치 헷갈림 | langgraph.json 위치 불명확 | README에 **`cd app && langgraph dev`** 명시 |
+| F9 | `.env` 변수가 안 먹힘 | `source .env` 누락 | README에 **`set -a; source .env; set +a`** 명시 |
+| F10 | `from langchain_core.tools import tool` import 누락 | requirements.txt에 langchain-core 누락 | **requirements.txt 최소에 명시** |
+
+이 함정들은 단순한 문서화 누락이 아니라 **emitter/validator의 결함**으로 분류됐다. v0.2부터 모든 신규 산출물은 코드 생성 시점에 자동으로 방지된다.
+
+---
+
+## 에러 핸들링
+
+```mermaid
+flowchart TB
+    Start([변환 시작])
+    Check{".claude/agents 또는<br/>.claude/skills 존재?"}
+    NoSrc[["❌ 즉시 종료<br/>'RevFactory Harness 산출물 미발견'<br/>파일 생성 없음"]]
+    ExtErr{extractor 부분<br/>parsing 실패?}
+    ExtWarn["가용 IR로 진행 +<br/>warnings 기록"]
+    EmitErr{emitter 단계 실패?}
+    EmitRetry["1회 재시도"]
+    EmitPartial["부분 산출물 보존 +<br/>reporter에 표시"]
+    ValErr{validator fail<br/>(compile/secret)?}
+    ValFix["emitter에<br/>fix 요청 (×1)"]
+    ValStill{여전히 fail?}
+    ValPartial["reporter에 명시"]
+    Done([reporter → User])
+
+    Start --> Check
+    Check -->|"없음"| NoSrc
+    Check -->|"있음"| ExtErr
+    ExtErr -->|"yes"| ExtWarn
+    ExtErr -->|"no"| EmitErr
+    ExtWarn --> EmitErr
+    EmitErr -->|"yes"| EmitRetry
+    EmitErr -->|"no"| ValErr
+    EmitRetry --> EmitPartial
+    EmitPartial --> ValErr
+    ValErr -->|"yes"| ValFix
+    ValErr -->|"no"| Done
+    ValFix --> ValStill
+    ValStill -->|"yes"| ValPartial
+    ValStill -->|"no"| Done
+    ValPartial --> Done
+
+    style NoSrc fill:#fee2e2,stroke:#dc2626
+    style Done fill:#dcfce7,stroke:#16a34a
+```
+
+| 상황 | 전략 |
+|---|---|
+| `.claude` 산출물 미발견 | 즉시 종료, 명확한 메시지, 파일 생성 없음 |
+| extractor 부분 실패 | 가용 IR로 진행 + warnings 기록 |
+| emitter 한 단계 실패 | 1회 재시도, 재실패 시 부분 산출물 보존 |
+| validator fail | emitter에 fix 요청 1회 → 재검증 → 여전히 fail이면 reporter 명시 |
+| 기존 `ports/deepagents/` 존재 | `ports/deepagents_YYYYMMDD_HHMMSS/` 새 폴더 (덮어쓰기 절대 금지) |
+| audit_only에서 emit 트리거 시도 | 오케스트레이터가 차단 |
+| 팀원 중지 | 리더가 감지 → 재시작 → 실패 시 부분 결과로 reporter |
+
+---
+
+## 안전 규칙 (불변)
+
+- 🔒 **원본 `.claude/`는 읽기 전용** — 절대 수정하지 않음
+- 🔒 **출력 경로는 project root 아래로 제한** — path traversal 차단
+- 🔒 **Secret 마스킹** — `sk-...`, `AKIA...`, `ghp_...`, `BEGIN PRIVATE KEY` 등 패턴은 IR/code/report 어디에도 raw로 노출 안 함
+- 🔒 **외부 API 호출 없음** — live invocation 금지 (smoke_test는 import만)
+- 🔒 **MCP 서버 자동 실행 안 함** — `mcp_tools.py`는 TODO stub만 생성
+- 🔒 **raw LangGraph emitter 생성 금지** — Stage 7 anti-pattern check에서 차단
+- 🔒 **`.env` 커밋 차단** — emit 시 `.gitignore` 자동 생성
+
+---
+
+## 디렉토리 구조 (이 스킬 자체)
+
+```
+~/.claude/skills/harness2deepagents/
+├── SKILL.md                       # 오케스트레이터 (이 스킬의 진입점)
+├── README.md                      # ← 지금 이 문서
+└── references/
+    ├── ir-schema-summary.md       # IR YAML 스키마 요약
+    ├── mapping-rules.md           # Harness ops → DeepAgents 매핑
+    ├── usage-examples.md          # 호출 예시 + 트리거 패턴
+    └── edge-cases.md              # EC-001~EC-010
+
+# 같은 working tree의 보조 스킬들
+~/.claude/skills/
+├── harness-source-extraction/     # extractor가 사용 (.claude → IR)
+├── deepagents-emission/           # emitter가 사용 (IR → app/)
+│   ├── SKILL.md
+│   ├── assets/                    # *.tmpl 코드 템플릿 11종
+│   ├── scripts/emit_deepagents.py # 결정적 codegen 엔진
+│   └── references/
+│       ├── codegen-templates.md
+│       ├── prompt-synthesis.md
+│       ├── mcp-handling.md
+│       └── tool-adapters.md       # v0.2 — provider별 reference 구현
+├── port-validation/               # validator가 사용 (11-stage)
+└── conversion-reporting/          # reporter가 사용
+
+# 같은 working tree의 에이전트들
+~/.claude/agents/
+├── harness-extractor.md
+├── deepagents-emitter.md
+├── port-validator.md
+└── conversion-reporter.md
+```
+
+---
+
+## 참고 문서
+
+| 문서 | 다루는 내용 |
+|---|---|
+| `SKILL.md` | 오케스트레이터 / 7-phase workflow / 운영 함정 카탈로그 |
+| `references/ir-schema-summary.md` | `harness.deepagents.ir.yaml` 스키마 (PRD §12.2) |
+| `references/mapping-rules.md` | Harness ↔ DeepAgents 매핑 규칙 (PRD §16) |
+| `references/usage-examples.md` | 트리거 키워드 / 호출 패턴 / 실행 시퀀스 |
+| `references/edge-cases.md` | EC-001 ~ EC-010 |
+| `../deepagents-emission/SKILL.md` | 9-step emit 절차 / 템플릿 변수 |
+| `../deepagents-emission/references/tool-adapters.md` | web_search / fetch_url / image_gen — Z.AI / Tavily / FAL 구현 모음 |
+| `../port-validation/SKILL.md` | 11-stage 검증 절차 |
+| `../conversion-reporting/SKILL.md` | 13-section 보고서 구조 + 품질 점수 가중치 |
+
+---
+
+## 한 줄 정리
+
+> **`/harness`가 설계한 에이전트 팀을, `/harness2deepagents`가 즉시 띄울 수 있는 LangChain DeepAgents 앱으로 옮긴다 — UI 포함, provider 자유, 운영 함정 자동 방지.**

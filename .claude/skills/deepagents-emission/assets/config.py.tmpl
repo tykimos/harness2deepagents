@@ -1,0 +1,20 @@
+"""Settings for the converted DeepAgents app.
+
+All runtime configuration is read from environment variables. Secrets must
+never be hardcoded here. See README.md for required env vars.
+"""
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Settings:
+    app_name: str = os.getenv("DEEPAGENTS_APP_NAME", "{{APP_NAME_DEFAULT}}")
+    model: str = os.getenv("DEEPAGENTS_MODEL", "{{MODEL_DEFAULT}}")
+    enable_mcp: bool = os.getenv("DEEPAGENTS_ENABLE_MCP", "false").lower() == "true"
+    dry_run: bool = os.getenv("DEEPAGENTS_DRY_RUN", "false").lower() == "true"
+
+
+SETTINGS = Settings()

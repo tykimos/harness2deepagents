@@ -1,0 +1,20 @@
+"""Smoke test for the converted DeepAgents app.
+
+This test only verifies that the agent module imports and exposes the
+required object. It does not call any model — live invocation is left to
+the user (see README.md).
+"""
+from __future__ import annotations
+
+import importlib
+
+
+def test_import_agent() -> None:
+    module = importlib.import_module("agent")
+    assert hasattr(module, "agent"), "agent.py must expose `agent` object"
+    assert hasattr(module, "invoke"), "agent.py must expose `invoke` function"
+
+
+if __name__ == "__main__":
+    test_import_agent()
+    print("Smoke test passed: agent import succeeded.")

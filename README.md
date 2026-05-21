@@ -10,45 +10,38 @@
 - **기본 UI:** [`langchain-ai/deep-agents-ui`](https://github.com/langchain-ai/deep-agents-ui) (자동 wiring)
 - **금지:** raw LangGraph emitter, 단일 `create_agent` 앱, secret 하드코딩
 
-> 모든 다이어그램은 GitHub 다크/라이트 모드 모두에서 동일하게 보이는 saturated badge 컬러 시스템을 사용합니다.
-
 ---
 
 ## 한 장 요약
 
 ```mermaid
 flowchart LR
-    classDef inp fill:#2563eb,color:#fff,stroke:#1e3a8a,stroke-width:2px
-    classDef proc fill:#d97706,color:#fff,stroke:#78350f,stroke-width:2px
-    classDef val fill:#dc2626,color:#fff,stroke:#7f1d1d,stroke-width:2px
-    classDef out fill:#16a34a,color:#fff,stroke:#14532d,stroke-width:2px
-    classDef rep fill:#7c3aed,color:#fff,stroke:#4c1d95,stroke-width:2px
 
     subgraph SRC["INPUT — RevFactory Harness 산출물"]
-        A1[".claude/agents/*.md"]:::inp
-        A2[".claude/skills/*/SKILL.md"]:::inp
-        A3[".mcp.json"]:::inp
-        A4["CLAUDE.md"]:::inp
+        A1[".claude/agents/*.md"]
+        A2[".claude/skills/*/SKILL.md"]
+        A3[".mcp.json"]
+        A4["CLAUDE.md"]
     end
 
     subgraph H2D["harness2deepagents (이 스킬)"]
         direction TB
-        E1["1·extractor"]:::inp
-        E2["2·emitter"]:::proc
-        E3["3·validator"]:::val
-        E4["4·reporter"]:::rep
+        E1["1·extractor"]
+        E2["2·emitter"]
+        E3["3·validator"]
+        E4["4·reporter"]
         E1 --> E2 --> E3 --> E4
         E3 -. "fix loop ×1" .-> E2
     end
 
     subgraph OUT["OUTPUT — ports/deepagents/"]
-        O1["app/agent.py"]:::out
-        O2["app/skills/*"]:::out
-        O3["app/langgraph.json"]:::out
-        O4["app/bootstrap_ui.sh"]:::out
-        O5["app/.env.example"]:::out
-        O6["app/.gitignore"]:::out
-        O7["conversion_report.md"]:::out
+        O1["app/agent.py"]
+        O2["app/skills/*"]
+        O3["app/langgraph.json"]
+        O4["app/bootstrap_ui.sh"]
+        O5["app/.env.example"]
+        O6["app/.gitignore"]
+        O7["conversion_report.md"]
     end
 
     SRC --> H2D --> OUT
@@ -79,23 +72,17 @@ flowchart LR
 
 ```mermaid
 graph TB
-    classDef inp fill:#2563eb,color:#fff,stroke:#1e3a8a,stroke-width:2px
-    classDef proc fill:#d97706,color:#fff,stroke:#78350f,stroke-width:2px
-    classDef val fill:#dc2626,color:#fff,stroke:#7f1d1d,stroke-width:2px
-    classDef rep fill:#7c3aed,color:#fff,stroke:#4c1d95,stroke-width:2px
-    classDef orch fill:#0f766e,color:#fff,stroke:#134e4a,stroke-width:2px
-    classDef user fill:#475569,color:#fff,stroke:#1e293b,stroke-width:2px
 
-    User([User]):::user
+    User([User])
 
-    Orchestrator{{"orchestrator<br/>(harness2deepagents)"}}:::orch
+    Orchestrator{{"orchestrator<br/>(harness2deepagents)"}}
 
     subgraph Team["harness2deepagents-team"]
         direction LR
-        Extractor["📥 harness-extractor<br/>.claude → IR YAML"]:::inp
-        Emitter["⚙️ deepagents-emitter<br/>IR → app/ 코드"]:::proc
-        Validator["🛡️ port-validator<br/>11-stage 검증"]:::val
-        Reporter["📝 conversion-reporter<br/>IR + 검증 → 보고서"]:::rep
+        Extractor["📥 harness-extractor<br/>.claude → IR YAML"]
+        Emitter["⚙️ deepagents-emitter<br/>IR → app/ 코드"]
+        Validator["🛡️ port-validator<br/>11-stage 검증"]
+        Reporter["📝 conversion-reporter<br/>IR + 검증 → 보고서"]
     end
 
     User -->|"/harness2deepagents"| Orchestrator
@@ -166,35 +153,29 @@ sequenceDiagram
 
 ```mermaid
 graph LR
-    classDef root fill:#0f766e,color:#fff,stroke:#134e4a,stroke-width:2px
-    classDef pkg fill:#2563eb,color:#fff,stroke:#1e3a8a,stroke-width:2px
-    classDef core fill:#d97706,color:#fff,stroke:#78350f,stroke-width:2px
-    classDef ui fill:#ea580c,color:#fff,stroke:#7c2d12,stroke-width:3px
-    classDef preserved fill:#16a34a,color:#fff,stroke:#14532d,stroke-width:2px
-    classDef report fill:#7c3aed,color:#fff,stroke:#4c1d95,stroke-width:2px
 
-    Root["ports/deepagents/"]:::root
-    Root --> IR["harness.deepagents.ir.yaml<br/>(IR 최종본)"]:::report
-    Root --> Report["conversion_report.md"]:::report
-    Root --> Logs["logs/validation.json"]:::report
-    Root --> App["app/"]:::pkg
+    Root["ports/deepagents/"]
+    Root --> IR["harness.deepagents.ir.yaml<br/>(IR 최종본)"]
+    Root --> Report["conversion_report.md"]
+    Root --> Logs["logs/validation.json"]
+    Root --> App["app/"]
 
-    App --> Agent["agent.py<br/>create_deep_agent +<br/>MAIN_SYSTEM_PROMPT +<br/>SUBAGENTS = [...]"]:::core
-    App --> Config["config.py<br/>Settings(model, app_name, ...)"]:::core
-    App --> Tools["tools.py<br/>@tool wrap +<br/>mock_fallback or<br/>strict_stub"]:::core
-    App --> Smoke["smoke_test.py"]:::core
-    App --> Reqs["requirements.txt"]:::core
-    App --> Proj["pyproject.toml"]:::core
-    App --> Readme["README.md<br/>(provider matrix +<br/>run sequences)"]:::core
-    App --> LG["⭐ langgraph.json<br/>graphs.deepagent →<br/>./agent.py:agent"]:::ui
-    App --> Env["⭐ .env.example<br/>(5 providers)"]:::ui
-    App --> Boot["⭐ bootstrap_ui.sh<br/>(chmod 0o755)"]:::ui
-    App --> GI["⭐ .gitignore<br/>(.env 보호)"]:::ui
-    App --> Skills["skills/<br/>(원본 .claude/skills 복사)"]:::preserved
-    App --> Mcp["(옵션) .mcp.json +<br/>mcp_tools.py"]:::core
+    App --> Agent["agent.py<br/>create_deep_agent +<br/>MAIN_SYSTEM_PROMPT +<br/>SUBAGENTS = [...]"]
+    App --> Config["config.py<br/>Settings(model, app_name, ...)"]
+    App --> Tools["tools.py<br/>@tool wrap +<br/>mock_fallback or<br/>strict_stub"]
+    App --> Smoke["smoke_test.py"]
+    App --> Reqs["requirements.txt"]
+    App --> Proj["pyproject.toml"]
+    App --> Readme["README.md<br/>(provider matrix +<br/>run sequences)"]
+    App --> LG["⭐ langgraph.json<br/>graphs.deepagent →<br/>./agent.py:agent"]
+    App --> Env["⭐ .env.example<br/>(5 providers)"]
+    App --> Boot["⭐ bootstrap_ui.sh<br/>(chmod 0o755)"]
+    App --> GI["⭐ .gitignore<br/>(.env 보호)"]
+    App --> Skills["skills/<br/>(원본 .claude/skills 복사)"]
+    App --> Mcp["(옵션) .mcp.json +<br/>mcp_tools.py"]
 ```
 
-⭐ 표시(orange, 두꺼운 border)는 **v0.2부터 기본 포함**되어, 사용자가 별도 wiring 없이 deep-agents-ui를 실행할 수 있다.
+⭐ 표시는 **v0.2부터 기본 포함**되어, 사용자가 별도 wiring 없이 deep-agents-ui를 실행할 수 있다.
 
 ---
 
@@ -202,35 +183,30 @@ graph LR
 
 ```mermaid
 flowchart LR
-    classDef browser fill:#475569,color:#fff,stroke:#1e293b,stroke-width:2px
-    classDef ui fill:#ea580c,color:#fff,stroke:#7c2d12,stroke-width:2px
-    classDef backend fill:#2563eb,color:#fff,stroke:#1e3a8a,stroke-width:2px
-    classDef agent fill:#d97706,color:#fff,stroke:#78350f,stroke-width:2px
-    classDef provider fill:#16a34a,color:#fff,stroke:#14532d,stroke-width:2px
 
-    Browser[("🌐 Browser<br/>http://localhost:3000")]:::browser
+    Browser[("🌐 Browser<br/>http://localhost:3000")]
 
     subgraph UIProc["Next.js UI Process"]
-        UI["langchain-ai/deep-agents-ui<br/>(./ui/ — bootstrap_ui.sh로 clone)"]:::ui
-        EnvLocal["ui/.env.local<br/>NEXT_PUBLIC_DEPLOYMENT_URL=http://127.0.0.1:2024<br/>NEXT_PUBLIC_AGENT_ID=deepagent"]:::ui
+        UI["langchain-ai/deep-agents-ui<br/>(./ui/ — bootstrap_ui.sh로 clone)"]
+        EnvLocal["ui/.env.local<br/>NEXT_PUBLIC_DEPLOYMENT_URL=http://127.0.0.1:2024<br/>NEXT_PUBLIC_AGENT_ID=deepagent"]
     end
 
     subgraph BackendProc["Python Backend Process"]
-        LGDev["langgraph dev --port 2024"]:::backend
-        LGJson["langgraph.json<br/>graphs.deepagent → agent:agent"]:::backend
-        AgentPy["agent.py<br/>create_deep_agent(...)"]:::agent
-        Subagents["SUBAGENTS[]<br/>= 원본 Harness agents"]:::agent
-        ToolsPy["tools.py<br/>@tool wrapped"]:::agent
-        SkillsDir["skills/<br/>(filesystem)"]:::agent
+        LGDev["langgraph dev --port 2024"]
+        LGJson["langgraph.json<br/>graphs.deepagent → agent:agent"]
+        AgentPy["agent.py<br/>create_deep_agent(...)"]
+        Subagents["SUBAGENTS[]<br/>= 원본 Harness agents"]
+        ToolsPy["tools.py<br/>@tool wrapped"]
+        SkillsDir["skills/<br/>(filesystem)"]
     end
 
     subgraph Provider["LLM Provider (.env로 선택)"]
         direction TB
-        Anth["Anthropic"]:::provider
-        Oai["OpenAI"]:::provider
-        Az["Azure OpenAI"]:::provider
-        Bed["Bedrock"]:::provider
-        Vx["Vertex"]:::provider
+        Anth["Anthropic"]
+        Oai["OpenAI"]
+        Az["Azure OpenAI"]
+        Bed["Bedrock"]
+        Vx["Vertex"]
     end
 
     Browser <-->|"LangGraph SDK<br/>WebSocket/HTTP"| UIProc
@@ -270,20 +246,16 @@ yarn dev                         # http://localhost:3000
 
 ```mermaid
 flowchart TB
-    classDef envvar fill:#475569,color:#fff,stroke:#1e293b,stroke-width:2px
-    classDef router fill:#0f766e,color:#fff,stroke:#134e4a,stroke-width:2px
-    classDef provider fill:#16a34a,color:#fff,stroke:#14532d,stroke-width:2px
-    classDef azure fill:#ea580c,color:#fff,stroke:#7c2d12,stroke-width:3px
 
-    Env["DEEPAGENTS_MODEL=<br/>provider:model"]:::envvar
+    Env["DEEPAGENTS_MODEL=<br/>provider:model"]
 
-    Env --> Router{"init_chat_model<br/>(langchain)"}:::router
+    Env --> Router{"init_chat_model<br/>(langchain)"}
 
-    Router -->|"anthropic:claude-sonnet-4-6"| Anth["langchain-anthropic<br/>ANTHROPIC_API_KEY"]:::provider
-    Router -->|"openai:gpt-4o"| Oai["langchain-openai<br/>OPENAI_API_KEY"]:::provider
-    Router -->|"azure_openai:&lt;deployment&gt;"| Az["⭐ langchain-openai<br/>AZURE_OPENAI_API_KEY<br/>AZURE_OPENAI_ENDPOINT<br/>OPENAI_API_VERSION=<br/>2025-01-01-preview<br/>AZURE_OPENAI_DEPLOYMENT_NAME"]:::azure
-    Router -->|"bedrock_converse:..."| Bed["langchain-aws<br/>AWS_ACCESS_KEY_ID<br/>AWS_SECRET_ACCESS_KEY<br/>AWS_REGION"]:::provider
-    Router -->|"google_vertexai:..."| Vx["langchain-google-vertexai<br/>GOOGLE_APPLICATION_CREDENTIALS"]:::provider
+    Router -->|"anthropic:claude-sonnet-4-6"| Anth["langchain-anthropic<br/>ANTHROPIC_API_KEY"]
+    Router -->|"openai:gpt-4o"| Oai["langchain-openai<br/>OPENAI_API_KEY"]
+    Router -->|"azure_openai:&lt;deployment&gt;"| Az["⭐ langchain-openai<br/>AZURE_OPENAI_API_KEY<br/>AZURE_OPENAI_ENDPOINT<br/>OPENAI_API_VERSION=<br/>2025-01-01-preview<br/>AZURE_OPENAI_DEPLOYMENT_NAME"]
+    Router -->|"bedrock_converse:..."| Bed["langchain-aws<br/>AWS_ACCESS_KEY_ID<br/>AWS_SECRET_ACCESS_KEY<br/>AWS_REGION"]
+    Router -->|"google_vertexai:..."| Vx["langchain-google-vertexai<br/>GOOGLE_APPLICATION_CREDENTIALS"]
 ```
 
 | Provider | `DEEPAGENTS_MODEL` 예 | 필요한 env | 추가 설치 |
@@ -306,35 +278,30 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    classDef stage fill:#2563eb,color:#fff,stroke:#1e3a8a,stroke-width:2px
-    classDef new fill:#ea580c,color:#fff,stroke:#7c2d12,stroke-width:3px
-    classDef done fill:#16a34a,color:#fff,stroke:#14532d,stroke-width:2px
-    classDef fail fill:#dc2626,color:#fff,stroke:#7f1d1d,stroke-width:2px
-    classDef loop fill:#d97706,color:#fff,stroke:#78350f,stroke-width:2px
 
-    Start([emitter 완료]):::done
-    S1["1·IR YAML parse"]:::stage
-    S2["2·필수 파일 존재"]:::stage
-    S3["3·python -m compileall app"]:::stage
-    S4["4·skill 폴더 수 일치"]:::stage
-    S5["5·Secret scan<br/>sk-, AKIA, ghp_, BEGIN PRIVATE KEY"]:::stage
-    S6["6·smoke import<br/>import agent; agent.agent"]:::stage
-    S7["7·Anti-pattern<br/>from langgraph.graph 부재"]:::stage
-    S8["⭐ 8·Tool registration (v0.2)<br/>@tool + TOOLS 자동 등록 +<br/>IR stub 일치"]:::new
-    S9["⭐ 9·Stream timeout sanity (v0.2)<br/>LANGCHAIN_OPENAI_STREAM_CHUNK_TIMEOUT_S ≥ 300"]:::new
-    S10["⭐ 10·Gitignore presence (v0.2)<br/>.env / .env.* / !.env.example"]:::new
-    S11["11·validation.json 작성"]:::stage
+    Start([emitter 완료])
+    S1["1·IR YAML parse"]
+    S2["2·필수 파일 존재"]
+    S3["3·python -m compileall app"]
+    S4["4·skill 폴더 수 일치"]
+    S5["5·Secret scan<br/>sk-, AKIA, ghp_, BEGIN PRIVATE KEY"]
+    S6["6·smoke import<br/>import agent; agent.agent"]
+    S7["7·Anti-pattern<br/>from langgraph.graph 부재"]
+    S8["⭐ 8·Tool registration (v0.2)<br/>@tool + TOOLS 자동 등록 +<br/>IR stub 일치"]
+    S9["⭐ 9·Stream timeout sanity (v0.2)<br/>LANGCHAIN_OPENAI_STREAM_CHUNK_TIMEOUT_S ≥ 300"]
+    S10["⭐ 10·Gitignore presence (v0.2)<br/>.env / .env.* / !.env.example"]
+    S11["11·validation.json 작성"]
 
-    Done([reporter에 전달]):::done
-    Fail{{"⚠️ Any stage fail"}}:::fail
-    FixLoop["emitter에 SendMessage<br/>(fix request, ×1)"]:::loop
+    Done([reporter에 전달])
+    Fail{{"⚠️ Any stage fail"}}
+    FixLoop["emitter에 SendMessage<br/>(fix request, ×1)"]
 
     Start --> S1 --> S2 --> S3 --> S4 --> S5 --> S6 --> S7 --> S8 --> S9 --> S10 --> S11 --> Done
     S1 & S2 & S3 & S4 & S5 & S6 & S7 & S8 & S9 & S10 -.->|fail| Fail
     Fail --> FixLoop --> S1
 ```
 
-⭐ 표시(orange, 두꺼운 border) stage 8/9/10은 **v0.2에서 신규 추가** — v0.1 산출물을 실제 운영했을 때 발견된 함정에 대한 회귀 방어.
+⭐ 표시(stage 8/9/10)는 **v0.2에서 신규 추가** — v0.1 산출물을 실제 운영했을 때 발견된 함정에 대한 회귀 방어.
 
 ---
 
@@ -342,27 +309,25 @@ flowchart TB
 
 ```mermaid
 graph LR
-    classDef harness fill:#2563eb,color:#fff,stroke:#1e3a8a,stroke-width:2px
-    classDef deepagents fill:#16a34a,color:#fff,stroke:#14532d,stroke-width:2px
 
     subgraph HARNESS["Harness 측"]
-        H_O["orchestrator skill"]:::harness
-        H_A["agents/*.md"]:::harness
-        H_S["skills/*"]:::harness
-        H_C["CLAUDE.md"]:::harness
-        H_W["_workspace/"]:::harness
-        H_M[".mcp.json"]:::harness
-        H_Op["Claude ops<br/>(TeamCreate / TaskCreate /<br/>SendMessage / parallel)"]:::harness
+        H_O["orchestrator skill"]
+        H_A["agents/*.md"]
+        H_S["skills/*"]
+        H_C["CLAUDE.md"]
+        H_W["_workspace/"]
+        H_M[".mcp.json"]
+        H_Op["Claude ops<br/>(TeamCreate / TaskCreate /<br/>SendMessage / parallel)"]
     end
 
     subgraph DA["DeepAgents 측"]
-        D_M["MAIN_SYSTEM_PROMPT<br/>(orchestrator + Notes +<br/>Delegation + Artifact + Safety)"]:::deepagents
-        D_S["SUBAGENTS = [...]<br/>(name + desc + prompt + skills)"]:::deepagents
-        D_Sk["app/skills/*<br/>(원본 구조 그대로)"]:::deepagents
-        D_R["README + runtime notes"]:::deepagents
-        D_F["filesystem/artifact policy"]:::deepagents
-        D_Mcp["masked .mcp.json +<br/>mcp_tools.py TODO"]:::deepagents
-        D_Reg["subagent registry +<br/>delegation policy +<br/>main-agent-mediated handoff"]:::deepagents
+        D_M["MAIN_SYSTEM_PROMPT<br/>(orchestrator + Notes +<br/>Delegation + Artifact + Safety)"]
+        D_S["SUBAGENTS = [...]<br/>(name + desc + prompt + skills)"]
+        D_Sk["app/skills/*<br/>(원본 구조 그대로)"]
+        D_R["README + runtime notes"]
+        D_F["filesystem/artifact policy"]
+        D_Mcp["masked .mcp.json +<br/>mcp_tools.py TODO"]
+        D_Reg["subagent registry +<br/>delegation policy +<br/>main-agent-mediated handoff"]
     end
 
     H_O ==> D_M
@@ -393,24 +358,18 @@ graph LR
 
 ```mermaid
 flowchart TB
-    classDef start fill:#475569,color:#fff,stroke:#1e293b,stroke-width:2px
-    classDef branch fill:#0f766e,color:#fff,stroke:#134e4a,stroke-width:2px
-    classDef full fill:#2563eb,color:#fff,stroke:#1e3a8a,stroke-width:2px
-    classDef audit fill:#7c3aed,color:#fff,stroke:#4c1d95,stroke-width:2px
-    classDef mock fill:#16a34a,color:#fff,stroke:#14532d,stroke-width:3px
-    classDef strict fill:#dc2626,color:#fff,stroke:#7f1d1d,stroke-width:2px
 
-    U([User 입력]):::start
-    M{모드}:::branch
-    Tm{도구 정책}:::branch
+    U([User 입력])
+    M{모드}
+    Tm{도구 정책}
 
     U --> M
-    M -->|"기본"| Full["full mode<br/>extract + emit + validate + report"]:::full
-    M -->|"'audit only',<br/>'분석만',<br/>'점검만'"| Audit["audit_only mode<br/>extract + report만<br/>(코드 미생성)"]:::audit
+    M -->|"기본"| Full["full mode<br/>extract + emit + validate + report"]
+    M -->|"'audit only',<br/>'분석만',<br/>'점검만'"| Audit["audit_only mode<br/>extract + report만<br/>(코드 미생성)"]
 
     Full --> Tm
-    Tm -->|"기본 ⭐"| MF["mock_fallback (v0.2 default)<br/>stub이 MOCK 데이터 반환<br/>워크플로우가 끝까지 동작"]:::mock
-    Tm -->|"'strict',<br/>'엄격',<br/>'raise on stub'"| SS["strict_stub<br/>stub 호출 시 NotImplementedError"]:::strict
+    Tm -->|"기본 ⭐"| MF["mock_fallback (v0.2 default)<br/>stub이 MOCK 데이터 반환<br/>워크플로우가 끝까지 동작"]
+    Tm -->|"'strict',<br/>'엄격',<br/>'raise on stub'"| SS["strict_stub<br/>stub 호출 시 NotImplementedError"]
 ```
 
 **왜 `mock_fallback`이 v0.2 기본인가?** v0.1은 `raise NotImplementedError` + `TOOLS = []`가 기본이라 첫 도구 호출에서 워크플로우가 즉사했다. 데모/CI/오프라인에서 운영 가치가 없었다.
@@ -486,25 +445,20 @@ v0.1 산출물을 LangGraph 백엔드 + deep-agents-ui 프론트엔드까지 실
 
 ```mermaid
 flowchart TB
-    classDef start fill:#475569,color:#fff,stroke:#1e293b,stroke-width:2px
-    classDef check fill:#0f766e,color:#fff,stroke:#134e4a,stroke-width:2px
-    classDef ok fill:#16a34a,color:#fff,stroke:#14532d,stroke-width:2px
-    classDef warn fill:#d97706,color:#fff,stroke:#78350f,stroke-width:2px
-    classDef fail fill:#dc2626,color:#fff,stroke:#7f1d1d,stroke-width:3px
 
-    Start([변환 시작]):::start
-    Check{".claude/agents 또는<br/>.claude/skills 존재?"}:::check
-    NoSrc[["❌ 즉시 종료<br/>'RevFactory Harness 산출물 미발견'<br/>파일 생성 없음"]]:::fail
-    ExtErr{extractor 부분<br/>parsing 실패?}:::check
-    ExtWarn["가용 IR로 진행 +<br/>warnings 기록"]:::warn
-    EmitErr{emitter 단계 실패?}:::check
-    EmitRetry["1회 재시도"]:::warn
-    EmitPartial["부분 산출물 보존 +<br/>reporter에 표시"]:::warn
-    ValErr{validator fail<br/>(compile/secret)?}:::check
-    ValFix["emitter에<br/>fix 요청 (×1)"]:::warn
-    ValStill{여전히 fail?}:::check
-    ValPartial["reporter에 명시"]:::warn
-    Done([reporter → User]):::ok
+    Start([변환 시작])
+    Check{".claude/agents 또는<br/>.claude/skills 존재?"}
+    NoSrc[["❌ 즉시 종료<br/>'RevFactory Harness 산출물 미발견'<br/>파일 생성 없음"]]
+    ExtErr{extractor 부분<br/>parsing 실패?}
+    ExtWarn["가용 IR로 진행 +<br/>warnings 기록"]
+    EmitErr{emitter 단계 실패?}
+    EmitRetry["1회 재시도"]
+    EmitPartial["부분 산출물 보존 +<br/>reporter에 표시"]
+    ValErr{validator fail<br/>(compile/secret)?}
+    ValFix["emitter에<br/>fix 요청 (×1)"]
+    ValStill{여전히 fail?}
+    ValPartial["reporter에 명시"]
+    Done([reporter → User])
 
     Start --> Check
     Check -->|"없음"| NoSrc
